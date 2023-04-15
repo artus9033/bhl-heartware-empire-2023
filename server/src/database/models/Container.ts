@@ -18,6 +18,9 @@ export class Container {
 	@Column()
 	name: string;
 
+	@Column()
+	serialPath: string;
+
 	@Column("timestamp without time zone", { default: null })
 	calibrationTimestamp: Date | null;
 

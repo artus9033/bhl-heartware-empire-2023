@@ -20,7 +20,7 @@ export class Station {
 	@Column()
 	name: string;
 
-	@Column()
+	@Column({ default: false })
 	isConnected: boolean;
 
 	@OneToMany(() => Container, (container) => container.station)
