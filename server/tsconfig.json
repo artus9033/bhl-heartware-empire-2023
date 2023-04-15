@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "emitDecoratorMetadata": true,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "target": "ES2022",
+    "sourceMap": false,
+    "outDir": "./dist",
+    "lib": ["dom"],
+    "jsx": "react",
+    "strictNullChecks": true,
+    "strict": false
+  },
+  "include": ["./src/**/*"]
+}
