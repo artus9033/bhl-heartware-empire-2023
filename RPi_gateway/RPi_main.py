@@ -73,9 +73,9 @@ class ShelfSense:
 
         connection.write(bytes(data, 'latin-1'))
 
-        print(bytes(data, 'latin-1'))
+        #print(bytes(data, 'latin-1'))
 
-        cr = connection.read()
+        cr = ord(connection.read())
 
         print(cr)
 
@@ -85,9 +85,11 @@ class ShelfSense:
     def unit_opened(self, unit_id):
         connection = self.get_connection(unit_id)
         while True:
+            cr = ord(connection.read())
+            print(cr)
             #RFiD Auth
-            if 0xA0 == connection.read():       
-                if unit_id == connection.read():
+            if 0xA0 == cr:
+                if unit_id == ord(connection.read()):
                     red_RFiD = ''
                     for _ in range(4):
                         red_RFiD += hex(ord(connection.read())).upper()[2:]
@@ -98,8 +100,8 @@ class ShelfSense:
                     else:
                         self.send_to_unit(chr(0x14) + chr(unit_id) + chr(0x00))
             # Unit closed
-            elif 0xA1 == connection.read():
-                if unit_id == connection.read():
+            elif 0xA1 == cr:
+                if unit_id == ord(connection.read()):
                     break
 
 
@@ -148,7 +150,7 @@ class ShelfSense:
 
 ss = ShelfSense({0: 'COM8'})
 
-ss.calibrate_unit(0)
+ss.put_in(0, 1)
 
 # ss.ser_cons['COM7'].write(bytes(chr(0x69) + chr(0x9F), 'latin-1'))
 
