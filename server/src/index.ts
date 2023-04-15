@@ -1,6 +1,7 @@
 import { createServer } from "http";
 
 import { Server } from "socket.io";
+import { In } from "typeorm";
 
 import { AppSocket, StationSocket } from "./Socket";
 import { AppDataSource } from "./database/DataSource";
@@ -187,6 +188,145 @@ async function main() {
 			} else {
 				console.log(`Unauthorized socket ${socket.id} has just disconnected`);
 			}
+		});
+
+		// user API handlers
+
+		socket.on("listStations", async (callback) => {
+			// authorization
+			if (!socket.userId) return null;
+
+			let user = await AppDataSource.manager.findOne(User, {
+				where: {
+					id: socket.userId,
+				},
+				relations: ["stations", "stations.containers"],
+			});
+			if (!user) {
+				callback(null);
+
+				return;
+			}
+
+			let stations = user.stations.map((station) => ({
+				name: station.name,
+				host: station.host,
+				isConnected: station.isConnected,
+				containersCount: station.containers.length,
+			}));
+
+			callback(stations);
+		});
+
+		socket.on("listContainersInStation", async (host: string, callback: any) => {
+			// authorization
+			if (!socket.userId) return null;
+
+			let user = await AppDataSource.manager.findOne(User, {
+				where: {
+					id: socket.userId,
+				},
+				relations: ["stations", "stations.containers", "stations.containers.productType"],
+			});
+			if (!user) {
+				callback(null);
+
+				return;
+			}
+
+			let matchingAllowedStation = user.stations.find(
+				({ host: predHost }) => predHost === host
+			);
+
+			// check if this user can access this station
+			if (!matchingAllowedStation) {
+				console.warn(
+					`User ${user.id} (${user.name}) tried to access station ${host}, which they don't have access to`
+				);
+
+				callback(null);
+
+				return;
+			}
+
+			// authorization is valid here
+			// @ts-ignore next line
+			delete matchingAllowedStation.pass;
+
+			callback(matchingAllowedStation);
+		});
+
+		socket.on("calibrateContainer", async (containerId: number, callback: any) => {
+			// authorization
+			if (!socket.userId) return null;
+
+			let user = await AppDataSource.manager.findOne(User, {
+				where: {
+					id: socket.userId,
+				},
+				relations: ["stations", "stations.containers", "stations.containers.productType"],
+			});
+			if (!user) {
+				callback(null);
+
+				return;
+			}
+
+			let hitContainer: Container | null = null,
+				hitParentStation: Station | null = null;
+			for (let station of user.stations) {
+				let maybeHitContainer = station.containers.find(({ id }) => id === containerId);
+
+				if (maybeHitContainer) {
+					hitParentStation = station;
+					hitContainer = maybeHitContainer;
+
+					break;
+				}
+			}
+
+			// check if this user can access this container (i.e., it belongs to any of their containers)
+			if (!hitContainer || !hitParentStation) {
+				console.warn(
+					`User ${user.id} (${user.name}) tried to access container ${containerId}, which they don't have access to`
+				);
+
+				callback(null);
+
+				return;
+			}
+
+			let stationSocket = stationHostToSocket[hitParentStation.host];
+
+			if (!stationSocket) {
+				console.warn(
+					`User ${user.id} (${user.name}) tried to access container ${containerId}, which they have access to, but the socket to this station is missing from the map on the server's side - it must be offline`
+				);
+
+				callback(false);
+
+				return;
+			}
+
+			console.log(
+				`User ${user.id} (${user.name}) started calibration of container ${containerId} in station ${hitParentStation.host} `
+			);
+
+			stationSocket.emit("calibrateContainer", hitContainer.id, async (result: boolean) => {
+				console.log(
+					`User ${user?.id} (${
+						user?.name
+					}) completed calibration of container ${containerId} in station ${
+						hitParentStation?.host
+					} with result: ${result ? "SUCCES" : "FAILURE"}`
+				);
+
+				hitContainer!.calibrationTimestamp = new Date();
+
+				await AppDataSource.manager.save(hitContainer!);
+
+				callback(result);
+			});
 		});
 	});
 

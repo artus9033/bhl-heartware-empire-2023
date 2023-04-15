@@ -14,7 +14,7 @@ export class Station {
 	@PrimaryColumn()
 	host: string;
 
-	@Column()
+	@Column({ select: false })
 	pass: string;
 
 	@Column()
