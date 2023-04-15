@@ -1,11 +1,24 @@
 import serial
-from typing import Dict
+from typing import Dict, Any
 from time import sleep
+import socketio
+import os
+import json
+import sys
 
 
 class ShelfSense:
+    config: Dict[str, Any] = {}
+
     def __init__(self, unit_port_m: Dict[int, str]) -> None:
         self.ser_cons = {}
+
+        configPath = os.path.abspath(os.path.join(os.path.dirname(__file__), "config.json"))
+
+        assert os.path.exists(configPath)
+
+        with open(configPath, "r") as f:
+            self.config = json.load(f)
 
         for key, item in unit_port_m.items():
 
@@ -33,6 +46,45 @@ class ShelfSense:
         #                  #'COM8': serial.Serial('COM8', baudrate=115200)}
         
         self.unit_port_m = unit_port_m
+        
+        self.sio = socketio.Client()
+
+        @self.sio.event
+        def connect():
+            print("Connected to SIO server")
+
+            def authResultHandler(success: bool):
+                if success:
+                    print("Authentication successful")
+                else:
+                    print("Authentication FAILED")
+
+                    sys.exit(-1)
+
+            self.sio.emit("auth", data=(self.config["host"], self.config["pass"]), callback=authResultHandler)
+
+        @self.sio.event
+        def connect_error(data):
+            print("Connecting to SIO server failed")
+
+        @self.sio.event
+        def disconnect():
+            print("Disconnected with SIO server")
+
+        @self.sio.event
+        def calibrateContainer(containerId: int)-> bool:
+            print(f"Calibration request for {containerId} received - beginning")
+
+            result: bool = True
+
+            # TODO: start calib and return result
+
+            print(f"Calibration result: {'' if result else 'un'}successful")
+            
+            return result
+        
+        self.sio.connect(f"ws://{self.config['apiHost']}:{self.config['apiPort']}")
+        
 
     def init_unit(self, unit_id: int, unit_name: str, unit_weight: int):
         data_to_send = chr(0x10)
@@ -73,9 +125,9 @@ class ShelfSense:
 
         connection.write(bytes(data, 'latin-1'))
 
-        print(bytes(data, 'latin-1'))
+        #print(bytes(data, 'latin-1'))
 
-        cr = connection.read()
+        cr = ord(connection.read())
 
         print(cr)
 
@@ -85,9 +137,11 @@ class ShelfSense:
     def unit_opened(self, unit_id):
         connection = self.get_connection(unit_id)
         while True:
+            cr = ord(connection.read())
+            print(cr)
             #RFiD Auth
-            if 0xA0 == connection.read():       
-                if unit_id == connection.read():
+            if 0xA0 == cr:
+                if unit_id == ord(connection.read()):
                     red_RFiD = ''
                     for _ in range(4):
                         red_RFiD += hex(ord(connection.read())).upper()[2:]
@@ -98,8 +152,8 @@ class ShelfSense:
                     else:
                         self.send_to_unit(chr(0x14) + chr(unit_id) + chr(0x00))
             # Unit closed
-            elif 0xA1 == connection.read():
-                if unit_id == connection.read():
+            elif 0xA1 == cr:
+                if unit_id == ord(connection.read()):
                     break
 
 
@@ -146,9 +200,9 @@ class ShelfSense:
 
 # print(chr(0x30)*2)
 
-ss = ShelfSense({0: 'COM8'})
+ss = ShelfSense({})
 
-ss.calibrate_unit(0)
+#ss.put_in(0, 1)
 
 # ss.ser_cons['COM7'].write(bytes(chr(0x69) + chr(0x9F), 'latin-1'))
 
