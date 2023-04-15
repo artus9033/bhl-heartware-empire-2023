@@ -63,7 +63,7 @@ class ShelfSense:
                 for unit in units:
                     if unit["serialPath"] not in self.unit_port_m.values():
                         port = unit["serialPath"]
-                        connection = serial.Serial('COM8', baudrate=115200, timeout = 1)
+                        connection = serial.Serial(unit["serialPath"] if self.isRPI else 'COM8', baudrate=115200, timeout = 1)
                         self.ser_cons[port] = connection
 
                         sleep(1)
