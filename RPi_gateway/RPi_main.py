@@ -1,5 +1,5 @@
 import serial
-from typing import Dict, Any
+from typing import Dict, Any, List
 from time import sleep
 import socketio
 import os
@@ -24,8 +24,9 @@ if isRPI:
 class ShelfSense:
     config: Dict[str, Any] = {}
 
-    def __init__(self, unit_port_m: Dict[int, str]) -> None:
-        self.ser_cons = {}
+    def __init__(self) -> None:
+        self.ser_cons: Dict[str, serial.Serial] = {}
+        self.unit_port_m: Dict[int, str] = {}
 
         configPath = os.path.abspath(os.path.join(os.path.dirname(__file__), "config.json"))
 
@@ -33,41 +34,16 @@ class ShelfSense:
 
         with open(configPath, "r") as f:
             self.config = json.load(f)
-
-        for key, item in unit_port_m.items():
-
-            connection = serial.Serial(item, baudrate=115200, timeout = 1)
-            self.ser_cons[item] = connection
-
-            sleep(1)
-
-            connection.write(bytes(chr(0x00), 'latin-1'))
-            connection.timeout = 0.001
-            for _ in range(100):
-                connection.read()
-                #print(connection.read())
-
-            connection.write(bytes(chr(0x00), 'latin-1'))
-
-            connection.timeout = 1
-
-            connection.read()
-            connection.read()
-            connection.read()
-
-
-        # self.ser_cons = {} #{'COM7': serial.Serial('COM7', baudrate=115200), 
-        #                  #'COM8': serial.Serial('COM8', baudrate=115200)}
-
+        
         print(f"Running on a {'' if isRPI else 'NON-'}RPI")
 
-        self.unit_port_m = unit_port_m if isRPI else "COM8"
+        # self.unit_port_m = unit_port_m if isRPI else "COM8"
 
         self.sio = socketio.Client()
 
         @self.sio.event
         def connect():
-            print("Connected to SIO server")
+            print("Connecting to SIO server")
 
             def authResultHandler(success: bool):
                 if success:
@@ -84,6 +60,51 @@ class ShelfSense:
             print("Connecting to SIO server failed")
 
         @self.sio.event
+        def initUnits(units: List[Dict]):
+            result = True
+            print("Initializing units:", units)
+            try:
+                pass
+                for unit in units:
+                    if unit["serialPath"] not in self.unit_port_m.values():
+                        port = unit["serialPath"]
+                        connection = serial.Serial(unit["serialPath"] if isRPI else 'COM8', baudrate=115200, timeout = 1)
+                        self.ser_cons[port] = connection
+
+                        sleep(1)
+
+                        connection.write(bytes(chr(0x00), 'latin-1'))
+                        connection.timeout = 0.001
+                        for _ in range(100):
+                            connection.read()
+                            #print(connection.read())
+
+                        connection.write(bytes(chr(0x00), 'latin-1'))
+
+                        connection.timeout = 1
+
+                        connection.read()
+                        connection.read()
+                        connection.read()
+
+                    self.unit_port_m[unit["id"]] = unit["serialPath"]
+
+
+
+                    self.init_unit(unit_id=unit["id"], unit_name=unit["name"], unit_weight=unit["weight"])
+
+                    # unit["errorMargin"] # TODO: HERE!
+
+
+            except Exception as e:
+                result = False
+                print("Initialisation error", e)
+
+            print(f"Initialisation result: {'' if result else 'un'}successful")
+
+            return result
+
+        @self.sio.event
         def disconnect():
             print("Disconnected with SIO server")
 
@@ -92,8 +113,11 @@ class ShelfSense:
             print(f"Calibration request for {containerId} received - beginning")
 
             result: bool = True
-
-            # TODO: start calib and return result
+            try:
+                self.calibrate_unit(containerId)
+            except Exception as e:
+                result = False
+                print("Calibration error", e)
 
             print(f"Calibration result: {'' if result else 'un'}successful")
             
@@ -136,15 +160,6 @@ class ShelfSense:
 
     def send_to_unit(self, data):
         connection = self.get_connection(ord(data[1]))
-        #print(connection)
-
-        #connection.readall()
-        #connection.readline()
-
-        # connection.timeout = 0.001
-        # for _ in range(100):
-        #     print(connection.read())
-
         connection.write(bytes(data, 'latin-1'))
 
         #print(bytes(data, 'latin-1'))
@@ -153,8 +168,28 @@ class ShelfSense:
 
         print(cr)
 
+        if cr == 0xA2:
+            while True:
+                cr = ord(connection.read())
+                print(cr)
+                if cr == 0xAA:
+                    break
+
+
+        print(cr)
+
         if 0xAA != cr:
             raise RuntimeError("Wrong ack recieved!")
+
+    # def debug(self, unit_id):
+    #     connection = self.get_connection(unit_id)
+    #     cr = ord(connection.read())
+    #     while cr != 0xA2:
+    #         cr = ord(connection.read())
+
+    #     for _ in range(64):
+    #         cr = ord(connection.read())
+    #         print(cr)
         
     def unit_opened(self, unit_id):
         connection = self.get_connection(unit_id)
@@ -188,6 +223,9 @@ atexit.register(cleanup)
 
 ss = ShelfSense({})
 
+#ss.debug(1)
+
+
 
 # ser = serial.Serial('COM8', baudrate=115200)
 
@@ -195,27 +233,25 @@ ss = ShelfSense({})
 
 # ser.write(bytes(chr(0x00), 'latin-1'))
 # ser.timeout = 0.001
-# for _ in range(100):
+# for _ in range(201):
 #     ser.read()
 #     #print(connection.read())
 
 # ser.timeout = 1
 
-# ser.write(bytes(chr(0x00), 'latin-1'))
+# #ser.write(bytes(chr(0x00), 'latin-1'))
 
 
 # print(ser.read())
 # print(ser.read())
 # print(ser.read())
-# print(ser.read())
-# print(ser.read())
-# print(ser.read())
-# print(ser.read())
-# print(ser.read())
-# print(ser.read())
-# print(ser.read())
 
-# ser.write(bytes(chr(0x11) + chr(0x00), 'latin-1'))
+# ser.write(bytes(chr(0x10) + chr(0x01) + 'A'*15 + '\0' + chr(0x10), 'latin-1'))
+
+# for _ in range(65):
+#     print(ser.read())
+
+# ser.close()
 
 
 # print(ser.read())
@@ -229,6 +265,10 @@ ss = ShelfSense({})
 # print()
 
 # print(chr(0x30)*2)
+
+# ss = ShelfSense()
+
+#ss.debug(1)
 
 #ss.put_in(0, 1)
 
