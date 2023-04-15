@@ -5,7 +5,7 @@ import socketio
 import os
 import json
 import sys
-
+import os
 
 class ShelfSense:
     config: Dict[str, Any] = {}
@@ -23,6 +23,17 @@ class ShelfSense:
         
 
         
+        try:
+            with open("/sys/firmware/devicetree/base/model", "r") as f:
+                self.isRPI = ("raspberry" in f.read().lower())
+        except:
+            # we must be on a non-linux then
+            self.isRPI = False
+
+        print(f"Running on a {'' if self.isRPI else 'NON-'}RPI")
+
+        # self.unit_port_m = unit_port_m if self.isRPI else "COM8"
+
         self.sio = socketio.Client()
 
         @self.sio.event
