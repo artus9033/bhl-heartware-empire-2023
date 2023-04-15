@@ -74,16 +74,18 @@ async function main() {
 	const stationIo = new Server(stationHttpServer, {});
 
 	stationIo.on("connection", (socket: StationSocket) => {
-		console.log(`Station ${socket.id} connected`);
+		console.log(`[STATIONS] Station ${socket.id} connected`);
 
 		socket.on("auth", async (host: string, pass: string) => {
-			let station = await AppDataSource.manager.findOneBy(Station, {
-				host,
-				pass,
+			let station = await AppDataSource.manager.findOne(Station, {
+				where: { host, pass },
+				relations: ["containers", "containers.productType"],
 			});
 
 			if (station) {
-				console.log(`Socket ${socket.id} has just authorized as station ${station.host}`);
+				console.log(
+					`[STATIONS] Socket ${socket.id} has just authorized as station ${station.host}`
+				);
 
 				stationHostToSocket[host] = socket;
 
@@ -92,10 +94,30 @@ async function main() {
 				station.isConnected = true;
 				await AppDataSource.manager.save(station);
 
+				socket.emit(
+					"initUnits",
+					station.containers.map((container) => ({
+						id: container.id,
+						name: container.name,
+						weight: container.productType.typicalWeight,
+						errorMargin: container.productType.errorMargin,
+						serialPath: container.serialPath,
+					})),
+					(success: boolean) => {
+						console.log(
+							`[STATIONS] Initialization of station ${
+								station?.host
+							} after authorization ended with result: ${
+								success ? "SUCCESS" : "FAILURE"
+							}`
+						);
+					}
+				);
+
 				return true;
 			} else {
 				console.log(
-					`Socket ${socket.id} tried to authorize as station ${socket.stationHost}, but failed (either not-existent or wrong pass code)`
+					`[STATIONS] Socket ${socket.id} tried to authorize as station ${socket.stationHost}, but failed (either not-existent or wrong pass code)`
 				);
 
 				return false;
@@ -117,12 +139,52 @@ async function main() {
 				delete stationHostToSocket[socket.stationHost];
 
 				console.log(
-					`Station ${socket.id} (station ${socket.stationHost}) disconnected:`,
+					`[STATIONS] Station ${socket.id} (station ${socket.stationHost}) disconnected:`,
 					reason
 				);
 			} else {
-				console.log(`Unauthorized socket ${socket.id} has just disconnected`);
+				console.log(`[STATIONS] Unauthorized socket ${socket.id} has just disconnected`);
 			}
+		});
+
+		socket.on("checkUserAuthorizationForStation", async (rfidUID: string, callback: any) => {
+			// authorization
+			if (!socket.stationHost) {
+				callback(null);
+				return;
+			}
+
+			let user = await AppDataSource.manager.findOneBy(User, {
+				rfidUID,
+			});
+
+			if (!user) {
+				console.log(
+					`[STATIONS] Socket ${socket.stationHost} asked whether user with RFID UID ${rfidUID} is authorized for access, but they are NOT present in the database at all`
+				);
+
+				callback(false);
+
+				return;
+			}
+
+			let hitStation = user.stations.find(({ host }) => host === socket.stationHost);
+
+			if (!hitStation) {
+				console.log(
+					`[STATIONS] Socket ${socket.stationHost} asked whether user with RFID UID ${rfidUID} is authorized for access, and they are NOT`
+				);
+
+				callback(false);
+
+				return;
+			}
+
+			console.log(
+				`[STATIONS] Socket ${socket.stationHost} asked whether user with RFID UID ${rfidUID} is authorized for access, and they ARE (SUCCESSFUL AUTHORIZATION)`
+			);
+
+			callback(true);
 		});
 	});
 
@@ -144,7 +206,7 @@ async function main() {
 
 			if (user) {
 				console.log(
-					`Socket ${socket.id} has just authorized as user ${user.id} (${username})`
+					`[APP] Socket ${socket.id} has just authorized as user ${user.id} (${username})`
 				);
 
 				userIdToSocket[user.id] = socket;
@@ -154,7 +216,7 @@ async function main() {
 				callback({ success: true, id: user.id, name: user.name });
 			} else {
 				console.log(
-					`Socket ${socket.id} tried to authorize as user ${username}, but failed (either not-existent or wrong password)`
+					`[APP] Socket ${socket.id} tried to authorize as user ${username}, but failed (either not-existent or wrong password)`
 				);
 
 				callback({ success: false });
@@ -167,11 +229,11 @@ async function main() {
 
 				socket.userId = null;
 
-				console.log(`Socket ${socket.id} (user ${socket.userId}) logged out`);
+				console.log(`[APP] Socket ${socket.id} (user ${socket.userId}) logged out`);
 
 				callback(true);
 			} else {
-				console.log(`Unauthorized socket ${socket.id} tried to log out`);
+				console.log(`[APP] Unauthorized socket ${socket.id} tried to log out`);
 
 				callback(false);
 			}
@@ -183,9 +245,12 @@ async function main() {
 
 				socket.userId = null;
 
-				console.log(`Socket ${socket.id} (user ${socket.userId}) disconnected:`, reason);
+				console.log(
+					`[APP] Socket ${socket.id} (user ${socket.userId}) disconnected:`,
+					reason
+				);
 			} else {
-				console.log(`Unauthorized socket ${socket.id} has just disconnected`);
+				console.log(`[APP] Unauthorized socket ${socket.id} has just disconnected`);
 			}
 		});
 
@@ -213,6 +278,10 @@ async function main() {
 				isConnected: station.isConnected,
 				containersCount: station.containers.length,
 			}));
+
+			console.log(
+				`[APP] User ${socket.userId} (${user.name}) listed ${stations.length} stations`
+			);
 
 			callback(stations);
 		});
@@ -251,6 +320,10 @@ async function main() {
 			// authorization is valid here
 			// @ts-ignore next line
 			delete matchingAllowedStation.pass;
+
+			console.log(
+				`[APP] User ${socket.userId} (${user.name}) listed ${matchingAllowedStation.containers.length} containers' details for station ${matchingAllowedStation.host}`
+			);
 
 			callback(matchingAllowedStation);
 		});
