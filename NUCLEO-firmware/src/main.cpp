@@ -1,5 +1,4 @@
 #include <Arduino.h>
-// #include <LiquidCrystal_I2C.h>
 #include <SPI.h>
 #include <MFRC522.h>
 #include <Servo.h>
@@ -17,18 +16,36 @@ enum commands{
   auth_result,
 
   request_auth = 0xa0,
-  unit_closed
+  unit_closed,
+  cmd_debug
 };
 
 #define NR_OF_CONTAINERS 1
 
 container containers[NR_OF_CONTAINERS];
 
+
+void debug(char *str)
+{
+  Serial.print(char(cmd_debug));
+  Serial.print(1);
+  int i = 0;
+  while((str[i] != 0)&&(i<64)){
+    Serial.print(str[i]);
+    i++;
+  }
+  while(i<64){
+    Serial.print(char(0));
+    i++;
+  }
+}
+
+
 void setup() {
     Serial.begin(115200);
     SPI.begin();
     containers[0] = container(0, 10, 9, 3);
-    Serial.println("Booted");
+    debug("Booted\n");
 }
 
 void readCmd(char *buf, int size, uint32_t timeout){
@@ -48,10 +65,6 @@ void readCmd(char *buf, int size, uint32_t timeout){
   }
 }
 
-void debug(char *str)
-{
-  
-}
 
 void AskForAuth(int cid, char *ID)
 {
