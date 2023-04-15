@@ -2,7 +2,7 @@ import colors from "material-colors";
 import Colors from "material-colors";
 import React, { useContext, useEffect, useMemo, useState } from "react";
 import { SafeAreaView, StatusBar, useColorScheme } from "react-native";
-import { DefaultTheme, MD3Theme, Provider as PaperProvider } from "react-native-paper";
+import { MD3DarkTheme, MD3Theme, Provider as PaperProvider } from "react-native-paper";
 import { Socket, io } from "socket.io-client";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -36,30 +36,30 @@ const DEFAULT_APP_CONTEXT: AppContextType = {
 
 export const AppContext = React.createContext<AppContextType>(DEFAULT_APP_CONTEXT);
 
-function AppContents() {
+function AppContents({ theme }: { theme: MD3Theme }) {
 	const appContext = useContext(AppContext);
-
-	return appContext.user.isAuthenticated ? <AppLayout /> : <LoginLayout />;
+	console.log(appContext.user.isAuthenticated);
+	return appContext.user.isAuthenticated ? <AppLayout theme={theme} /> : <LoginLayout />;
 }
 
 function App(): JSX.Element {
 	const theme = useMemo<MD3Theme>(
 		() => ({
-			...DefaultTheme,
+			...MD3DarkTheme,
 			colors: {
-				...DefaultTheme.colors,
+				...MD3DarkTheme.colors,
 				primary: Colors.teal[300],
 				secondary: Colors.indigo[300],
-				backdrop: Colors.blueGrey[600],
-				background: Colors.blueGrey[500],
-				surface: Colors.blueGrey[500],
-				primaryContainer: Colors.blueGrey[500],
-				secondaryContainer: Colors.blueGrey[500],
-				text: colors.white,
-				onBackground: colors.white,
-				onPrimaryContainer: colors.white,
-				onSecondaryContainer: colors.white,
-				onSurface: colors.white,
+				// backdrop: Colors.blueGrey[600],
+				// background: Colors.blueGrey[500],
+				// surface: Colors.blueGrey[500],
+				// primaryContainer: Colors.blueGrey[500],
+				// secondaryContainer: Colors.blueGrey[500],
+				// text: colors.white,
+				// onBackground: colors.white,
+				// onPrimaryContainer: colors.white,
+				// onSecondaryContainer: colors.white,
+				// onSurface: colors.white,
 			},
 			dark: true,
 		}),
@@ -108,7 +108,7 @@ function App(): JSX.Element {
 						setAppContext,
 					}}
 				>
-					<AppContents />
+					<AppContents theme={theme} />
 				</AppContext.Provider>
 			</SafeAreaView>
 		</PaperProvider>

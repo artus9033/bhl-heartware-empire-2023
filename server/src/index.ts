@@ -136,7 +136,7 @@ async function main() {
 	appIo.on("connection", (socket: AppSocket) => {
 		console.log(`Socket ${socket.id} connected`);
 
-		socket.on("auth", async (username: string, password: string, callback) => {
+		socket.on("auth", async (username: string, password: string, callback: any) => {
 			let user = await AppDataSource.manager.findOneBy(User, {
 				username,
 				password,
@@ -161,15 +161,19 @@ async function main() {
 			}
 		});
 
-		socket.on("logout", async () => {
+		socket.on("logout", async (callback: any) => {
 			if (socket.userId) {
 				delete userIdToSocket[socket.userId];
 
 				socket.userId = null;
 
 				console.log(`Socket ${socket.id} (user ${socket.userId}) logged out`);
+
+				callback(true);
 			} else {
 				console.log(`Unauthorized socket ${socket.id} tried to log out`);
+
+				callback(false);
 			}
 		});
 
