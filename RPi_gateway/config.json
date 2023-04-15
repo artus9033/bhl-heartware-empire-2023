@@ -1,6 +1,6 @@
 {
     "host": "UbuntuRPi",
     "pass": "q204gh8wgs",
-    "apiHost": "eve-N750JK",
+    "apiHost": "eve-N750JK.local",
     "apiPort": 3000
 }
