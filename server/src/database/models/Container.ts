@@ -21,6 +21,9 @@ export class Container {
 	@Column()
 	serialPath: string;
 
+	@Column("int", { default: 0 })
+	itemsCount: number;
+
 	@Column("timestamp without time zone", { default: null })
 	calibrationTimestamp: Date | null;
 

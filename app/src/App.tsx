@@ -2,7 +2,7 @@ import colors from "material-colors";
 import Colors from "material-colors";
 import React, { useContext, useEffect, useMemo, useState } from "react";
 import { SafeAreaView, StatusBar, useColorScheme } from "react-native";
-import { MD3DarkTheme, MD3Theme, Provider as PaperProvider } from "react-native-paper";
+import { MD3DarkTheme, MD3Theme, Provider as PaperProvider, Surface } from "react-native-paper";
 import { Socket, io } from "socket.io-client";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -38,7 +38,7 @@ export const AppContext = React.createContext<AppContextType>(DEFAULT_APP_CONTEX
 
 function AppContents({ theme }: { theme: MD3Theme }) {
 	const appContext = useContext(AppContext);
-	console.log(appContext.user.isAuthenticated);
+
 	return appContext.user.isAuthenticated ? <AppLayout theme={theme} /> : <LoginLayout />;
 }
 
@@ -50,18 +50,9 @@ function App(): JSX.Element {
 				...MD3DarkTheme.colors,
 				primary: Colors.teal[300],
 				secondary: Colors.indigo[300],
-				// backdrop: Colors.blueGrey[600],
-				// background: Colors.blueGrey[500],
-				// surface: Colors.blueGrey[500],
-				// primaryContainer: Colors.blueGrey[500],
-				// secondaryContainer: Colors.blueGrey[500],
-				// text: colors.white,
-				// onBackground: colors.white,
-				// onPrimaryContainer: colors.white,
-				// onSecondaryContainer: colors.white,
-				// onSurface: colors.white,
 			},
 			dark: true,
+			roundness: 8,
 		}),
 		[]
 	);
@@ -108,7 +99,9 @@ function App(): JSX.Element {
 						setAppContext,
 					}}
 				>
-					<AppContents theme={theme} />
+					<Surface style={{ height: "100%" }}>
+						<AppContents theme={theme} />
+					</Surface>
 				</AppContext.Provider>
 			</SafeAreaView>
 		</PaperProvider>

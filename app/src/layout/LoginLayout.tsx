@@ -1,6 +1,6 @@
 import colors from "material-colors";
 import React, { useContext, useEffect, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Image, ScrollView, StyleSheet, View } from "react-native";
 import { Button, IconButton, Text, TextInput, useTheme } from "react-native-paper";
 import Snackbar from "react-native-snackbar";
 
@@ -75,9 +75,29 @@ export const LoginLayout = () => {
 
 	return (
 		<ScrollView contentContainerStyle={styles.container}>
-			<Section style={{ marginBottom: 80 }} title="ShelfSense App">
-				<Text>Log on to your account</Text>
-			</Section>
+			<View
+				style={{
+					flexDirection: "row",
+					justifyContent: "center",
+					paddingVertical: 20,
+				}}
+			>
+				<Section style={{ marginBottom: 80, marginTop: 20 }} title="ShelfSense App">
+					<Text>Log on to your account</Text>
+				</Section>
+
+				<View>
+					<Image
+						source={require("../assets/app_icon.png")}
+						style={{
+							resizeMode: "contain",
+							width: "auto",
+							height: 100,
+							aspectRatio: 1.0,
+						}}
+					/>
+				</View>
+			</View>
 
 			<TextInput
 				label="Username"

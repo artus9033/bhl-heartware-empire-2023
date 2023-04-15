@@ -1,7 +1,7 @@
 import colors from "material-colors";
 import React, { useContext } from "react";
 import { ScrollView, View } from "react-native";
-import { Appbar, Avatar, MD3Theme, useTheme as usePaperTheme } from "react-native-paper";
+import { Appbar, Avatar, MD3Theme, Surface, useTheme as usePaperTheme } from "react-native-paper";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { NavigationContainer, DarkTheme as NavigationDarkTheme } from "@react-navigation/native";
@@ -9,6 +9,7 @@ import { NativeStackHeaderProps, createNativeStackNavigator } from "@react-navig
 
 import { AppContext } from "../App";
 import { HomeScreen } from "../screens/HomeScreen";
+import { StationDetailsScreen } from "../screens/StationDetailsScreen";
 
 const Header = ({ navigation, route, options, back }: NativeStackHeaderProps) => {
 	const theme = usePaperTheme();
@@ -33,7 +34,11 @@ const Header = ({ navigation, route, options, back }: NativeStackHeaderProps) =>
 				}}
 			/>
 
-			<Appbar.Content title={typeof title === "string" ? title : title({ children: "" })} />
+			<Appbar.Content
+				title={`${
+					typeof title === "string" ? title : title({ children: "" })
+				} · ShelfSense`}
+			/>
 
 			<Appbar.Action
 				icon="power"
@@ -77,7 +82,13 @@ export function AppLayout({ theme }: { theme: MD3Theme }) {
 					<Stack.Screen
 						name="Home"
 						component={HomeScreen}
-						options={{ title: "Warehouse" }}
+						options={{ title: "Stations" }}
+					/>
+
+					<Stack.Screen
+						name="Station"
+						component={StationDetailsScreen}
+						options={{ title: "Station details" }}
 					/>
 				</Stack.Navigator>
 			</NavigationContainer>
