@@ -49,7 +49,6 @@ export function HomeScreen() {
 	return (
 		<Surface style={{ height: "100%" }}>
 			<ScrollView
-				contentContainerStyle={{ flex: 1 }}
 				refreshControl={<RefreshControl refreshing={isLoadingData} onRefresh={loadData} />}
 			>
 				<Section style={{ marginBottom: 30 }} title="Your stations">

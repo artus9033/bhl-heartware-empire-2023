@@ -1,10 +1,10 @@
+import _ from "lodash";
 import colors from "material-colors";
 import moment from "moment";
 import { useContext, useEffect, useState } from "react";
 import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
-import { ActivityIndicator, Button, Surface, Text } from "react-native-paper";
+import { ActivityIndicator, Button, Surface, Text, TextInput } from "react-native-paper";
 import Snackbar from "react-native-snackbar";
-import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 
 import { useNavigation, useRoute } from "@react-navigation/native";
 
@@ -14,6 +14,12 @@ import { Section } from "../components/Section";
 import { StationDetailsDTO } from "../types/StationDetailsDTO";
 
 type Data = StationDetailsDTO | null; // shorthand
+
+enum Mode {
+	PICK = "pick",
+	STORE = "store",
+	NONE = "none",
+}
 
 export function StationDetailsScreen() {
 	const appContext = useContext(AppContext);
@@ -25,6 +31,10 @@ export function StationDetailsScreen() {
 	const [isCalibratingMap, setIsCalibratingMap] = useState<{ [containerId: string]: boolean }>(
 		{}
 	);
+	const [mode, setMode] = useState<Mode>(Mode.NONE);
+	const [selectedQuantitiesMap, setSelectedQuantitiesMap] = useState<{
+		[productTypeId: number]: number;
+	}>({});
 
 	const loadData = () => {
 		if (!appContext.socket || isLoadingData) return;
@@ -55,10 +65,11 @@ export function StationDetailsScreen() {
 		loadData();
 	}, []);
 
+	let totalSelectedSum = _.sum(Object.values(selectedQuantitiesMap));
+
 	return (
 		<Surface style={{ height: "100%" }}>
 			<ScrollView
-				contentContainerStyle={{ flex: 1 }}
 				refreshControl={<RefreshControl refreshing={isLoadingData} onRefresh={loadData} />}
 			>
 				<Section
@@ -68,50 +79,135 @@ export function StationDetailsScreen() {
 					<Text>You can find the shelves mounted inside this station below</Text>
 				</Section>
 
+				<View
+					style={{
+						flexDirection: "row",
+						justifyContent: "space-evenly",
+						marginBottom: 20,
+					}}
+				>
+					<Button
+						mode="contained-tonal"
+						icon="arrow-up-bold-box-outline"
+						onPress={() => {
+							setMode(Mode.PICK);
+						}}
+						disabled={mode === Mode.STORE}
+					>
+						Pick items
+					</Button>
+
+					<Button
+						mode="contained-tonal"
+						icon="arrow-down-bold-box-outline"
+						onPress={() => {
+							setMode(Mode.STORE);
+						}}
+						disabled={mode === Mode.PICK}
+					>
+						Store items
+					</Button>
+				</View>
+
+				{mode !== Mode.NONE && (
+					<View
+						style={{
+							flexDirection: "row",
+							justifyContent: "space-evenly",
+							marginBottom: 20,
+						}}
+					>
+						<Button
+							mode="contained"
+							icon="close"
+							onPress={() => {
+								setMode(Mode.NONE);
+								setSelectedQuantitiesMap({});
+							}}
+						>
+							Cancel
+						</Button>
+
+						<Button
+							mode="contained"
+							icon="close"
+							onPress={() => {
+								setMode(Mode.NONE);
+							}}
+							disabled={totalSelectedSum === 0}
+						>
+							Accept - {mode} ({pluralizeWord(totalSelectedSum, "item")})
+						</Button>
+					</View>
+				)}
+
 				{isLoadingData ? (
 					<ActivityIndicator size="large" />
 				) : (
-					data?.containers.map((container) => (
-						<Surface
-							elevation={2}
-							key={container.id}
-							style={{ margin: 8, borderRadius: 30, overflow: "hidden" }}
-						>
-							<Pressable
-								android_ripple={{
-									color: "#ffffff66",
-								}}
-								onPress={() => {
-									// @ts-ignore next line
-									navigation.navigate("Container", { container: container });
-								}}
+					data?.containers.map((container) => {
+						const selectedInThisContainer =
+							selectedQuantitiesMap[container.productType.id] ?? 0;
+
+						return (
+							<Surface
+								elevation={2}
+								key={container.id}
+								style={{ margin: 8, borderRadius: 30, overflow: "hidden" }}
 							>
-								<View style={styles.sectionContainer}>
-									<Text style={styles.sectionTitle}>{container.name} </Text>
-									<Text
-										style={[
-											styles.sectionSubtitle,
-											{
-												color: container.calibrationTimestamp
-													? undefined
-													: colors.red[400],
-											},
-										]}
+								<View style={{ flexDirection: "row" }}>
+									<View style={styles.sectionContainer}>
+										<Text style={styles.sectionTitle}>{container.name} </Text>
+										<Text
+											style={[
+												styles.sectionSubtitle,
+												{
+													color: container.calibrationTimestamp
+														? undefined
+														: colors.red[400],
+												},
+											]}
+										>
+											{container.calibrationTimestamp
+												? moment(container.calibrationTimestamp).format(
+														"MM-DD-YYYY HH:mm"
+												  )
+												: "Not calibrated yet"}
+										</Text>
+
+										<Text style={styles.sectionSubtitle}>
+											{`Stored product: ${container.productType.name}`}
+										</Text>
+
+										<Text style={styles.sectionSubtitle}>
+											{pluralizeWord(container.itemsCount, "item")} inside
+										</Text>
+									</View>
+
+									<View
+										style={{
+											margin: 20,
+											alignContent: "flex-end",
+											alignItems: "flex-end",
+											justifyContent: "flex-start",
+											flex: 1,
+										}}
 									>
-										{container.calibrationTimestamp
-											? moment(container.calibrationTimestamp).format(
-													"MM-DD-YYYY HH:mm"
-											  )
-											: "Not calibrated yet"}
-									</Text>
-
-									<Text style={styles.sectionSubtitle}>
-										{`Stored product: ${container.productType.name}`}
-									</Text>
-
-									<Text style={styles.sectionSubtitle}>
-										{pluralizeWord(container.itemsCount, "item")} inside
-									</Text>
+										<TextInput
+											mode="outlined"
+											style={{
+												margin: 0,
+												width: "100%",
+												fontSize: 24,
+												fontWeight:
+													selectedInThisContainer > 0
+														? "bold"
+														: undefined,
+												textAlign: "center",
+											}}
+										>
+											{selectedInThisContainer}
+										</TextInput>
+									</View>
 								</View>
 
 								<View
@@ -132,13 +228,13 @@ export function StationDetailsScreen() {
 											appContext.socket.emit(
 												"calibrateContainer",
 												container.id,
-												(success: boolean | null) => {
+												(success: boolean | null | "OFFLINE") => {
 													setIsCalibratingMap({
 														...isCalibratingMap,
 														[container.id]: false,
 													});
 
-													if (success) {
+													if (success === true) {
 														Snackbar.show({
 															text: "Calibration successful",
 															backgroundColor: colors.green[400],
@@ -146,7 +242,7 @@ export function StationDetailsScreen() {
 
 														loadData();
 													} else {
-														if (success === false) {
+														if (success === "OFFLINE") {
 															Snackbar.show({
 																text: "This station is currently offline",
 																backgroundColor: colors.red[300],
@@ -169,9 +265,9 @@ export function StationDetailsScreen() {
 											: "Calibrate now"}
 									</Button>
 								</View>
-							</Pressable>
-						</Surface>
-					))
+							</Surface>
+						);
+					})
 				)}
 			</ScrollView>
 		</Surface>

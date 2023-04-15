@@ -1,7 +1,6 @@
 import { createServer } from "http";
 
 import { Server } from "socket.io";
-import { In } from "typeorm";
 
 import { AppSocket, StationSocket } from "./Socket";
 import { AppDataSource } from "./database/DataSource";
@@ -105,17 +104,17 @@ async function main() {
 
 		socket.on("disconnect", async (reason) => {
 			if (socket.stationHost) {
-				delete stationHostToSocket[socket.stationHost];
-
 				let station = await AppDataSource.manager.findOneBy(Station, {
 					host: socket.stationHost,
 				});
 
 				if (station) {
-					station.isConnected = true;
+					station.isConnected = false;
 
 					await AppDataSource.manager.save(station);
 				}
+
+				delete stationHostToSocket[socket.stationHost];
 
 				console.log(
 					`Station ${socket.id} (station ${socket.stationHost}) disconnected:`,
@@ -127,7 +126,7 @@ async function main() {
 		});
 	});
 
-	stationHttpServer.listen(3000);
+	stationHttpServer.listen(3000, "0.0.0.0");
 
 	// app server
 
@@ -303,7 +302,7 @@ async function main() {
 					`User ${user.id} (${user.name}) tried to access container ${containerId}, which they have access to, but the socket to this station is missing from the map on the server's side - it must be offline`
 				);
 
-				callback(false);
+				callback("OFFLINE");
 
 				return;
 			}
@@ -330,7 +329,7 @@ async function main() {
 		});
 	});
 
-	appHttpServer.listen(4000);
+	appHttpServer.listen(4000, "0.0.0.0");
 }
 
 main().catch((error) => console.log("Server main error: ", error));
