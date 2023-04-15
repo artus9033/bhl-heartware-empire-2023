@@ -72,10 +72,7 @@ export function StationDetailsScreen() {
 			<ScrollView
 				refreshControl={<RefreshControl refreshing={isLoadingData} onRefresh={loadData} />}
 			>
-				<Section
-					style={{ marginBottom: 30 }}
-					title={data ? `Station ${data?.name}` : "Loading..."}
-				>
+				<Section style={{ marginBottom: 30 }} title={data ? data?.name : "Loading..."}>
 					<Text>You can find the shelves mounted inside this station below</Text>
 				</Section>
 
