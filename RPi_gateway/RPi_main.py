@@ -6,6 +6,20 @@ import os
 import json
 import sys
 import os
+import atexit
+
+try:
+    with open("/sys/firmware/devicetree/base/model", "r") as f:
+        isRPI = ("raspberry" in f.read().lower())
+except:
+    # we must be on a non-linux then
+    isRPI = False
+
+if isRPI:
+    import RPi.GPIO as GPIO
+    from mfrc522 import SimpleMFRC522
+
+
 
 class ShelfSense:
     config: Dict[str, Any] = {}
@@ -44,17 +58,10 @@ class ShelfSense:
 
         # self.ser_cons = {} #{'COM7': serial.Serial('COM7', baudrate=115200), 
         #                  #'COM8': serial.Serial('COM8', baudrate=115200)}
-        
-        try:
-            with open("/sys/firmware/devicetree/base/model", "r") as f:
-                self.isRPI = ("raspberry" in f.read().lower())
-        except:
-            # we must be on a non-linux then
-            self.isRPI = False
 
-        print(f"Running on a {'' if self.isRPI else 'NON-'}RPI")
+        print(f"Running on a {'' if isRPI else 'NON-'}RPI")
 
-        self.unit_port_m = unit_port_m if self.isRPI else "COM8"
+        self.unit_port_m = unit_port_m if isRPI else "COM8"
 
         self.sio = socketio.Client()
 
@@ -93,6 +100,12 @@ class ShelfSense:
             return result
         
         self.sio.connect(f"ws://{self.config['apiHost']}:{self.config['apiPort']}")
+
+        # if isRPI:
+        #     self.rfidReader = SimpleMFRC522()
+
+        #     self.rfidThread = Thread(target=self., args=())
+        #     thread.start()
         
 
     def init_unit(self, unit_id: int, unit_name: str, unit_weight: int):
@@ -167,6 +180,14 @@ class ShelfSense:
 
 
 
+def cleanup():
+    if isRPI:
+        GPIO.cleanup()
+
+atexit.register(cleanup)
+
+ss = ShelfSense({})
+
 
 # ser = serial.Serial('COM8', baudrate=115200)
 
@@ -208,8 +229,6 @@ class ShelfSense:
 # print()
 
 # print(chr(0x30)*2)
-
-ss = ShelfSense({})
 
 #ss.put_in(0, 1)
 
