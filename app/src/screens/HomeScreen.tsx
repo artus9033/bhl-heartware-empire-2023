@@ -44,6 +44,16 @@ export function HomeScreen() {
 	// on mount effect
 	useEffect(() => {
 		loadData();
+
+		const refreshListener = () => {
+			loadData();
+		};
+
+		appContext.socket?.on("refreshData", refreshListener);
+
+		return () => {
+			appContext.socket?.off("refreshData", refreshListener);
+		};
 	}, []);
 
 	return (
