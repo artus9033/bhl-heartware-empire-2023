@@ -16,6 +16,7 @@ const int lcdD7 = 7;
 typedef enum containerStateMachine
 {
     def,
+    uninitialized,
     waiting_for_auth,
     authenticated_opened,
     auth_failed,
@@ -35,7 +36,7 @@ class container
 public:
     contFSM state;
     char name[17];
-    uint8_t unit_weight;
+    int unit_weight;
     int RGB_Pins[3];
     Servo myservo;
     int qntAfterAction; // if negative than qntToTake
@@ -97,7 +98,7 @@ void debug(T msg)
 void setup() {
     Serial.begin(9600);
     containers[0] = container(3, A0, A1, 6, 5, 4, 11);
-    debug("Booted\n");
+    debug("Booted\n\r");
 }
 
 // void readCmd(char *buf, int size, uint32_t timeout){
@@ -131,6 +132,7 @@ void loop() {
     if(cmd != 0){
       bool isValidCmd = true;
       int cid = Serial.read();
+      int amount = 0;
       switch (cmd)
       {
       case init_unit:
@@ -157,6 +159,10 @@ void loop() {
         containers[cid].close();
         break;
       case request_amount:
+        amount = containers[cid].getAmount();
+        debug("Amount = ");
+        debug(amount);
+        debug("\n\r");
         break;
       default:
         isValidCmd = false;
@@ -167,7 +173,6 @@ void loop() {
         Serial.print(char(0xaa));
       }
       if(cmd == request_amount){
-        int amount = containers[cid].getAmount();
         Serial.print(char(amount_ret));
         Serial.print(char(cid));
         Serial.print(char(amount));
@@ -175,9 +180,14 @@ void loop() {
     }
   }
 
-  for (size_t cid = 0; cid < NR_OF_CONTAINERS; cid++)
-  {
-    containers[cid].update();
+  static unsigned long prevTime;
+  unsigned long curTime = millis();
+  if(curTime-prevTime > 500){
+    prevTime = curTime;
+    for (size_t cid = 0; cid < NR_OF_CONTAINERS; cid++)
+    {
+      containers[cid].update();
+    }
   }
   
 
@@ -274,16 +284,16 @@ void loop() {
 
 container::container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int G, int B, int lcd_EN)
 {
-    state = def;
+    state = uninitialized;
     scale.begin(_HX_DT_pin, _HX_SCK_pin);
     calibrate_empty();
     debug("Offset = ");
     debug(offset);
-    debug('\n');
+    debug("\n\r");
     myservo.attach(servo_pin, 600, 2300);
     lcd.init(1, lcdRS, 255, lcd_EN, lcdD4, lcdD5, lcdD6, lcdD7, 0, 0, 0, 0);
     lcd.begin(16, 2);
-    debug("lcd init/begin\n");
+    debug("lcd init/begin\n\r");
     lcd.print("hello world!");
     RGB_Pins[0] = R;
     RGB_Pins[1] = G;
@@ -292,17 +302,16 @@ container::container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int 
     pinMode(R, OUTPUT);
     pinMode(G, OUTPUT);
     pinMode(B, OUTPUT);
-    open();
-    delay(3000);
     close();
-    delay(3000);
-    open();
-    debug("Servo closed\n");
+    debug("Servo closed\n\r");
 }
 
 long container::measureWeight()
 {
-  return (scale.read()-offset)*sodaCanWeight/angle_part;
+  scale.read();
+  delay(100);
+  long result = (scale.read()-offset)*sodaCanWeight/angle_part;
+  return result;
 }
 
 container::container()
@@ -384,22 +393,28 @@ void container::setLed(color arg)
 
 void container::init_unit(char *_name, uint8_t _unit_weight)
 {
+    lcd.setCursor(0,0);
     for(int i = 0; i<16; i++){
         name[i] = _name[i];
+        lcd.print((name[i]==0)?' ':name[i]);
     }
     name[16] = 0;
     debug(name);
-    debug("\n");
-    unit_weight = _unit_weight;
+    debug("\n\r");
+    unit_weight = _unit_weight*1000;
     debug("Unit weight = ");
     debug(unit_weight);
-    debug('\n');
+    debug("\n\r");
     lcd.setCursor(0,0);
     lcd.print(name);
+    state = def;
 }
 
 void container::update()
 {
+  if(state == uninitialized)
+    return;
+
   int amount = getAmount();
 
   if(state == authenticated_opened){
@@ -407,7 +422,7 @@ void container::update()
     lcd.print(requestedAmount-amount);
     lcd.print("    ");
   }
-  lcd.setCursor(9, 1);
+  lcd.setCursor(12, 1);
   lcd.print(amount);
   lcd.print("   ");
 }
