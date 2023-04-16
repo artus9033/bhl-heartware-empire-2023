@@ -72,6 +72,18 @@ class ShelfSense:
 
             sleep(2) #TODO -add RFiD check instead of sleep!!!!
 
+            read_rfid = self.rfidReader.read_id()
+            loop_rfid_var = False
+
+            def RfiD_callback(ath_confirm: bool):
+                loop_rfid_var = ath_confirm
+
+            self.sio.emit("checkUserAuthorizationForStation", data=read_rfid, callback=RfiD_callback)
+
+            while not loop_rfid_var:
+                self.rfidReader.read_id()
+                self.sio.emit("checkUserAuthorizationForStation", data=read_rfid, callback=RfiD_callback)
+
             # TODO - only if RFID cjecks out execute below code
 
             lastContainerId: Optional[int] = None
