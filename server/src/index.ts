@@ -50,14 +50,14 @@ async function seed() {
 	keanu.name = "Keanu Reeves";
 	keanu.username = "keanu";
 	keanu.password = "reeves";
-	keanu.rfidUID = "520EF51A"; // karta
+	keanu.rfidUID = "453639431318"; // brelok
 	keanu.stations = [station];
 
 	let indiana = new User();
 	indiana.name = "Indiana Jones";
 	indiana.username = "indiana";
 	indiana.password = "jones";
-	indiana.rfidUID = "699F0464"; // brelok
+	indiana.rfidUID = "352438262451"; // karta
 	indiana.stations = [station];
 
 	await AppDataSource.manager.save([keanu, indiana]);
@@ -158,8 +158,9 @@ async function main() {
 				return;
 			}
 
-			let user = await AppDataSource.manager.findOneBy(User, {
-				rfidUID,
+			let user = await AppDataSource.manager.findOne(User, {
+				where: { rfidUID },
+				relations: ["stations"],
 			});
 
 			if (!user) {

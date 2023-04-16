@@ -70,15 +70,31 @@ class ShelfSense:
         def put_in(order: Dict[str, int]):
             print("put_in received for:", order)
 
-            sleep(2) #TODO -add RFiD check instead of sleep!!!!
+            read_rfid = self.rfidReader.read_id()
+            self.loop_rfid_var = False
 
-            # TODO - only if RFID cjecks out execute below code
+
+            def RfiD_callback(ath_confirm: bool):
+                self.loop_rfid_var = ath_confirm
+
+            self.sio.emit("checkUserAuthorizationForStation", data=read_rfid, callback=RfiD_callback)
+
+            while not self.loop_rfid_var:
+                read_rfid = self.rfidReader.read_id()
+                self.sio.emit("checkUserAuthorizationForStation", data=read_rfid, callback=RfiD_callback)
+                sleep(0.5)
+                if not self.loop_rfid_var:
+                    self.send_to_unit(chr(0x16) + chr(0x00))
+                    print(chr(0x16) + chr(0x00))
+                sleep(0.5)
 
             lastContainerId: Optional[int] = None
             lastAmount: Optional[int] = None
             realAmount: Optional[int] = None
 
             self.sio.emit("put_in_progress", data=("UNLOCKED", 0)) # unlocked signal, amount can be anything, ID must be null
+
+            
 
             for id, targetAmount in order.items():
                 realAmount = None # reset
@@ -292,6 +308,8 @@ class ShelfSense:
 
     def calibrate_unit(self, unit_id: int):
         self.send_to_unit(chr(0x11) + chr(unit_id))
+        sleep(1)
+        self.send_to_unit(chr(0x18) + chr(unit_id))
 
     def take_out(self, unit_id: int, amount: int):
         self.send_to_unit(chr(0x12) + chr(unit_id) + chr(amount))
@@ -311,7 +329,7 @@ class ShelfSense:
         connection = self.get_connection(ord(data[1]))
         connection.write(bytes(data, 'latin-1'))
 
-        # print(bytes(data, 'latin-1'))
+        print(bytes(data, 'latin-1'))
 
         sleep(0.2)
 
@@ -320,12 +338,12 @@ class ShelfSense:
 
         cr = connection.read()
 
-        # print("!", cr)
+        print("!", cr)
 
         if cr == bytes(chr(0xA2), 'latin-1'):
             while True:
                 cr = connection.read()
-                # print(cr)
+                print(cr)
                 if cr == bytes(chr(0xAA), 'latin-1'):
                     break
 
