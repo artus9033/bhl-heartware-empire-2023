@@ -291,7 +291,7 @@ def cleanup():
 
 atexit.register(cleanup)
 
-ss = ShelfSense({})
+ss = ShelfSense()
 
 #ss.debug(1)
 
