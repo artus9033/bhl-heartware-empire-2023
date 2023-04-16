@@ -94,6 +94,8 @@ async function main() {
 				station.isConnected = true;
 				await AppDataSource.manager.save(station);
 
+				appIo.emit("refreshData");
+
 				socket.emit(
 					"initUnits",
 					station.containers.map((container) => ({
@@ -134,6 +136,8 @@ async function main() {
 					station.isConnected = false;
 
 					await AppDataSource.manager.save(station);
+
+					appIo.emit("refreshData");
 				}
 
 				delete stationHostToSocket[socket.stationHost];
@@ -397,6 +401,8 @@ async function main() {
 
 				await AppDataSource.manager.save(hitContainer!);
 
+				appIo.emit("refreshData");
+
 				callback(result);
 			});
 		});
@@ -501,6 +507,8 @@ async function main() {
 						container.itemsCount = currentRealContainerState;
 
 						await AppDataSource.manager.save(container);
+
+						appIo.emit("refreshData");
 					}
 
 					socket.emit("put_in_progress", currentContainerId, currentRealContainerState);
@@ -516,6 +524,129 @@ async function main() {
 					);
 
 					stationSocket.off("put_in_progress", progressListener);
+
+					callback(result);
+				});
+			}
+		);
+
+		socket.on(
+			"take_out",
+			async (
+				host: string,
+				selectedQuantitiesMap: {
+					[containerId: number]: number;
+				},
+				callback: any
+			) => {
+				// authorization
+				if (!socket.userId) return null;
+
+				let user = await AppDataSource.manager.findOne(User, {
+					where: {
+						id: socket.userId,
+					},
+					relations: [
+						"stations",
+						"stations.containers",
+						"stations.containers.productType",
+					],
+				});
+				if (!user) {
+					callback(null);
+
+					return;
+				}
+
+				let hitStation = user.stations.find(({ host: predHost }) => predHost === host);
+
+				// check if this user can access this station
+				if (!hitStation) {
+					console.warn(
+						`User ${user.id} (${user.name}) tried to access station ${host}, which they don't have access to`
+					);
+
+					callback(null);
+
+					return;
+				}
+
+				let stationSocket = stationHostToSocket[hitStation.host];
+
+				if (!stationSocket) {
+					console.warn(
+						`[APP] User ${user.id} (${user.name}) tried to access station ${host}, which they have access to, but the socket to this station is missing from the map on the server's side - it must be offline`
+					);
+
+					callback(false);
+
+					return;
+				}
+
+				console.log(
+					`[APP] User ${user.id} (${user.name}) started unlocking the station ${hitStation.host}`
+				);
+
+				let progressListener = async (
+					currentContainerId: number | null | "UNLOCKED",
+					currentRealContainerState: number
+				) => {
+					if (currentContainerId === "UNLOCKED") {
+						// finished unlocking
+
+						console.log(
+							`[APP] User ${user!.id} (${
+								user!.name
+							}) finished unlocking the station ${
+								hitStation!.host
+							}; now, the instructions for the pick procedure are:`,
+							selectedQuantitiesMap
+						);
+					} else if (currentContainerId === null) {
+						// finished everything
+
+						console.log(
+							`[APP] User ${user!.id} (${
+								user!.name
+							}) finished the picking procedure from the station ${hitStation!.host}`
+						);
+					} else {
+						// in progress
+
+						console.log(
+							`[APP] User ${user!.id} (${
+								user!.name
+							}) made changes to the state while picking from the station ${
+								hitStation!.host
+							}:`,
+							currentContainerId,
+							currentRealContainerState
+						);
+
+						let container = hitStation!.containers.find(
+							({ id }) => id === currentContainerId
+						)!;
+
+						container.itemsCount = currentRealContainerState;
+
+						await AppDataSource.manager.save(container);
+
+						appIo.emit("refreshData");
+					}
+
+					socket.emit("take_out_progress", currentContainerId, currentRealContainerState);
+				};
+
+				stationSocket.on("take_out_progress", progressListener);
+
+				stationSocket.emit("take_out", selectedQuantitiesMap, (result: boolean) => {
+					console.log(
+						`[APP] User ${user!.id} (${
+							user!.name
+						}) completed the pick procedure from station ${hitStation!.host}`
+					);
+
+					stationSocket.off("take_out_progress", progressListener);
 
 					callback(result);
 				});
