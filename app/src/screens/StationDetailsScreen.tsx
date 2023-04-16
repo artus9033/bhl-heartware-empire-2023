@@ -1,16 +1,30 @@
 import _ from "lodash";
 import colors from "material-colors";
 import moment from "moment";
-import { useContext, useEffect, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
-import { ActivityIndicator, Button, Surface, Text, TextInput } from "react-native-paper";
+import { useCallback, useContext, useEffect, useState } from "react";
+import { RefreshControl, ScrollView, StyleSheet, Vibration, View } from "react-native";
+import {
+	ActivityIndicator,
+	Button,
+	IconButton,
+	Modal,
+	Portal,
+	ProgressBar,
+	Surface,
+	Text,
+	TextInput,
+	useTheme,
+} from "react-native-paper";
 import Snackbar from "react-native-snackbar";
+import Sound from "react-native-sound";
+import MaterialCommunityIcons from "react-native-vector-icons/MaterialCommunityIcons";
 
 import { useNavigation, useRoute } from "@react-navigation/native";
 
 import { AppContext } from "../App";
 import { pluralizeWord } from "../common/utils";
 import { Section } from "../components/Section";
+import { ContainerDTO } from "../types/ContainerDTO";
 import { StationDetailsDTO } from "../types/StationDetailsDTO";
 
 type Data = StationDetailsDTO | null; // shorthand
@@ -24,6 +38,7 @@ enum Mode {
 export function StationDetailsScreen() {
 	const appContext = useContext(AppContext);
 	const navigation = useNavigation();
+	const theme = useTheme();
 	const { params } = useRoute();
 
 	const [isLoadingData, setIsLoadingData] = useState(false);
@@ -33,8 +48,19 @@ export function StationDetailsScreen() {
 	);
 	const [mode, setMode] = useState<Mode>(Mode.NONE);
 	const [selectedQuantitiesMap, setSelectedQuantitiesMap] = useState<{
-		[productTypeId: number]: number;
+		[containerId: number]: number;
 	}>({});
+	const [selectedQuantitiesInputsBufferMap, setSelectedQuantitiesInputsBufferMap] = useState<{
+		[containerId: number]: string;
+	}>({});
+	const [isChangingRealState, setIsChangingRealState] = useState(false);
+	const [isUnlocking, setIsUnlocking] = useState(false);
+
+	const [processState, setProcessState] = useState<{
+		currentContainer: ContainerDTO;
+		currentRealContainerState: number;
+		targetContainerState: number;
+	} | null>(null);
 
 	const loadData = () => {
 		if (!appContext.socket || isLoadingData) return;
@@ -67,8 +93,141 @@ export function StationDetailsScreen() {
 
 	let totalSelectedSum = _.sum(Object.values(selectedQuantitiesMap));
 
+	const playSuccess = useCallback(() => {
+		let succ = new Sound("success.wav", Sound.MAIN_BUNDLE, (error) => {
+			if (error) {
+				console.error(error);
+			}
+		});
+
+		succ.play();
+	}, []);
+
+	const playFailure = useCallback(() => {
+		let err = new Sound("failure.mp3", Sound.MAIN_BUNDLE, (error) => {
+			if (error) {
+				console.error(error);
+			}
+		});
+
+		err.play();
+	}, []);
+
+	let progressNorm = processState
+		? processState.currentRealContainerState / processState.targetContainerState
+		: 0;
+
 	return (
 		<Surface style={{ height: "100%" }}>
+			<Portal>
+				<Modal
+					visible={isChangingRealState}
+					contentContainerStyle={{
+						padding: 15,
+						margin: 10,
+						backgroundColor: theme.colors.surface,
+						justifyContent: "center",
+						alignContent: "center",
+						alignItems: "center",
+						height: "80%",
+						flexDirection: "column",
+					}}
+				>
+					{isUnlocking ? (
+						<>
+							<View
+								style={{
+									flexDirection: "row",
+								}}
+							>
+								<ActivityIndicator size="large" style={{ marginRight: 50 }} />
+
+								<MaterialCommunityIcons
+									name="security"
+									size={88}
+									color={theme.colors.secondary}
+								/>
+							</View>
+
+							<Text
+								style={{
+									fontSize: 20,
+									fontWeight: "800",
+									textAlign: "center",
+									lineHeight: 32,
+									marginTop: 30,
+									marginBottom: 15,
+								}}
+							>
+								Due to security reasons, please authorize yourself by attaching your
+								badge to the terminal.
+							</Text>
+						</>
+					) : (
+						<>
+							<MaterialCommunityIcons
+								name="arrow-down-bold-box-outline"
+								size={88}
+								color={theme.colors.secondary}
+							/>
+
+							{!!processState && (
+								<>
+									<ProgressBar
+										animatedValue={progressNorm}
+										style={{ width: "100%", height: 10, marginVertical: 15 }}
+									/>
+
+									<Text
+										style={{
+											fontSize: 20,
+											fontWeight: "800",
+											textAlign: "center",
+											marginVertical: 5,
+											marginBottom: 30,
+										}}
+									>
+										Container: {processState.currentContainer.name}
+									</Text>
+
+									<Text
+										style={{
+											fontSize: 20,
+											textAlign: "center",
+											marginVertical: 5,
+										}}
+									>
+										Currently present items:{" "}
+										{processState.currentRealContainerState}
+									</Text>
+
+									<Text
+										style={{
+											fontSize: 20,
+											textAlign: "center",
+											marginVertical: 5,
+											marginBottom: 30,
+										}}
+									>
+										Target items quantity: {processState.targetContainerState}
+									</Text>
+
+									<Text
+										style={{
+											fontSize: 20,
+											textAlign: "center",
+											marginVertical: 5,
+										}}
+									>
+										Progress: {Math.round(progressNorm * 100)}%
+									</Text>
+								</>
+							)}
+						</>
+					)}
+				</Modal>
+			</Portal>
+
 			<ScrollView
 				refreshControl={<RefreshControl refreshing={isLoadingData} onRefresh={loadData} />}
 			>
@@ -120,6 +279,7 @@ export function StationDetailsScreen() {
 							onPress={() => {
 								setMode(Mode.NONE);
 								setSelectedQuantitiesMap({});
+								setSelectedQuantitiesInputsBufferMap({});
 							}}
 						>
 							Cancel
@@ -129,6 +289,174 @@ export function StationDetailsScreen() {
 							mode="contained"
 							icon="close"
 							onPress={() => {
+								if (!appContext.socket || !data) return;
+
+								let targetSelectedQuantitiesMap = { ...selectedQuantitiesMap }; // since these are just offsets, we need to add the counts that are already inside
+
+								for (let key of Object.keys(targetSelectedQuantitiesMap)) {
+									let keyBackAsInt = Number(key); // Object.keys() converts to string...
+
+									targetSelectedQuantitiesMap[keyBackAsInt] +=
+										data.containers.find(
+											({ id }) => id === keyBackAsInt
+										)!.itemsCount;
+								}
+
+								switch (mode) {
+									case Mode.STORE:
+										{
+											setIsChangingRealState(true);
+
+											let currentDBContainerState =
+												data.containers[0].itemsCount;
+
+											setProcessState({
+												currentContainer: data.containers[0],
+												currentRealContainerState:
+													data.containers[0].itemsCount,
+												targetContainerState:
+													targetSelectedQuantitiesMap[
+														data.containers[0].id
+													],
+											});
+
+											let previousValue: number | null = null,
+												previousContainerId: number | null = null;
+
+											let progressListener = (
+												currentContainerId: number | null | "UNLOCKED",
+												currentRealContainerState: number
+											) => {
+												if (currentContainerId === "UNLOCKED") {
+													// unlocking finished
+
+													setIsUnlocking(false);
+
+													console.log("Unlocked the container");
+
+													Snackbar.show({
+														text: "The shelf is now unlocked",
+														backgroundColor: colors.green[400],
+													});
+												} else if (currentContainerId === null) {
+													// finished everything
+
+													console.log("Finished storing");
+
+													playSuccess();
+
+													Vibration.vibrate([700, 700, 1500]);
+												} else {
+													// in progress
+
+													console.log(
+														"Storing progress",
+														currentContainerId,
+														currentRealContainerState
+													);
+
+													if (
+														previousContainerId !==
+															currentContainerId &&
+														previousContainerId !== null
+													) {
+														// finished a single container
+														playSuccess();
+
+														Vibration.vibrate(1000);
+													}
+
+													if (
+														previousValue === null ||
+														previousContainerId !== currentContainerId
+													) {
+														// started the first container
+														previousValue = currentDBContainerState;
+														previousContainerId = currentContainerId;
+													}
+
+													let itemCountDelta =
+														currentRealContainerState - previousValue;
+
+													let currentContainer = data.containers.find(
+														({ id }) => id === currentContainerId
+													)!;
+
+													setProcessState({
+														currentContainer,
+														currentRealContainerState,
+														targetContainerState:
+															targetSelectedQuantitiesMap[
+																currentContainer.id
+															],
+													});
+
+													if (itemCountDelta < 0) {
+														// one less, while we want one more!
+														Vibration.vibrate(1000);
+
+														Snackbar.show({
+															text: "Please store items instead of picking them",
+															backgroundColor: colors.red[400],
+														});
+													} else {
+														// good, we are making progress in the right direction
+														Vibration.vibrate([500, 500]);
+
+														Snackbar.show({
+															text: "Item inserted",
+														});
+													}
+
+													previousValue = currentRealContainerState; // store for next iteration
+												}
+											};
+
+											appContext.socket.on(
+												"put_in_progress",
+												progressListener
+											);
+
+											setIsUnlocking(true);
+
+											appContext.socket.emit(
+												"put_in",
+												data.host,
+												targetSelectedQuantitiesMap,
+												(result: boolean) => {
+													console.log(
+														"Storing procedure completed (ended)",
+														result
+													);
+
+													appContext.socket!.off(
+														"put_in_progress",
+														progressListener
+													);
+
+													setProcessState(null);
+													setIsChangingRealState(false);
+												}
+											);
+										}
+
+										break;
+
+									case Mode.PICK:
+										{
+											setIsChangingRealState(true);
+
+											setIsUnlocking(true);
+
+											appContext.socket.emit(
+												"take_out",
+												targetSelectedQuantitiesMap,
+												(unlockSuccess: boolean) => {}
+											);
+										}
+										break;
+								}
+
 								setMode(Mode.NONE);
 							}}
 							disabled={totalSelectedSum === 0}
@@ -142,8 +470,9 @@ export function StationDetailsScreen() {
 					<ActivityIndicator size="large" />
 				) : (
 					data?.containers.map((container) => {
-						const selectedInThisContainer =
-							selectedQuantitiesMap[container.productType.id] ?? 0;
+						const selectedInThisContainer = selectedQuantitiesMap[container.id] ?? 0,
+							currTextBuffValue = selectedQuantitiesInputsBufferMap[container.id],
+							currNumVal = selectedQuantitiesMap[container.id] ?? 0;
 
 						return (
 							<Surface
@@ -180,31 +509,127 @@ export function StationDetailsScreen() {
 										</Text>
 									</View>
 
-									<View
-										style={{
-											margin: 20,
-											alignContent: "flex-end",
-											alignItems: "flex-end",
-											justifyContent: "flex-start",
-											flex: 1,
-										}}
-									>
-										<TextInput
-											mode="outlined"
+									{mode !== Mode.NONE && (
+										<View
 											style={{
-												margin: 0,
-												width: "100%",
-												fontSize: 24,
-												fontWeight:
-													selectedInThisContainer > 0
-														? "bold"
-														: undefined,
-												textAlign: "center",
+												margin: 20,
+												alignContent: "flex-end",
+												alignItems: "flex-end",
+												justifyContent: "flex-start",
+												flexDirection: "column",
+												flex: 1,
 											}}
 										>
-											{selectedInThisContainer}
-										</TextInput>
-									</View>
+											<View
+												style={{
+													alignContent: "center",
+													alignItems: "center",
+													justifyContent: "center",
+													width: "100%",
+													flex: 1,
+													marginBottom: 10,
+												}}
+											>
+												<TextInput
+													mode="outlined"
+													style={{
+														margin: 0,
+														width: "100%",
+														fontSize: 24,
+														fontWeight:
+															selectedInThisContainer > 0
+																? "bold"
+																: undefined,
+														textAlign: "center",
+													}}
+													keyboardType="numeric"
+													onChangeText={(text) => {
+														let numVal = Number(text.trim());
+
+														if (
+															!Number.isNaN(numVal) &&
+															(mode === Mode.PICK
+																? numVal >= 0 &&
+																  numVal <= container.itemsCount
+																: true)
+														) {
+															setSelectedQuantitiesMap({
+																...selectedQuantitiesMap,
+																[container.id]: numVal,
+															});
+														}
+
+														setSelectedQuantitiesInputsBufferMap({
+															...selectedQuantitiesInputsBufferMap,
+															[container.id]: text,
+														});
+													}}
+													value={
+														(currTextBuffValue
+															? currTextBuffValue.length > 0
+																? // strip leading zeros
+																  currTextBuffValue.startsWith(
+																		"0"
+																  ) && currTextBuffValue.length > 1
+																	? currTextBuffValue.slice(1)
+																	: currTextBuffValue
+																: null
+															: null) ?? String(0)
+													}
+												/>
+											</View>
+
+											<View
+												style={{
+													alignContent: "center",
+													alignItems: "center",
+													justifyContent: "center",
+													flexDirection: "row",
+													width: "100%",
+													flex: 1,
+												}}
+											>
+												<IconButton
+													icon="minus"
+													onPress={() => {
+														let newNumVal = currNumVal - 1;
+
+														setSelectedQuantitiesMap({
+															...selectedQuantitiesMap,
+															[container.id]: newNumVal,
+														});
+
+														setSelectedQuantitiesInputsBufferMap({
+															...selectedQuantitiesInputsBufferMap,
+															[container.id]: String(newNumVal),
+														});
+													}}
+													disabled={currNumVal <= 0}
+												/>
+
+												<IconButton
+													icon="plus"
+													onPress={() => {
+														let newNumVal = currNumVal + 1;
+
+														setSelectedQuantitiesMap({
+															...selectedQuantitiesMap,
+															[container.id]: newNumVal,
+														});
+
+														setSelectedQuantitiesInputsBufferMap({
+															...selectedQuantitiesInputsBufferMap,
+															[container.id]: String(newNumVal),
+														});
+													}}
+													disabled={
+														mode === Mode.PICK &&
+														currNumVal >= container.itemsCount
+													}
+												/>
+											</View>
+										</View>
+									)}
 								</View>
 
 								<View
