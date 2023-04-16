@@ -22,6 +22,14 @@ typedef enum containerStateMachine
     all_picked_up
 } contFSM;
 
+typedef enum 
+{
+    red,
+    blue,
+    green,
+    cyan,
+    black
+} color;
 class container
 {
 public:
@@ -30,12 +38,13 @@ public:
     uint8_t unit_weight;
     int RGB_Pins[3];
     Servo myservo;
-    int qntToPut; // if negative than qntToTake
+    int qntAfterAction; // if negative than qntToTake
     HX711 scale;
     long offset;
     long angle_part;
     long sodaCanWeight = 12925;
     LiquidCrystal lcd;
+    int requestedAmount;
     
 
     container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int G, int B, int lcd_EN);
@@ -47,6 +56,9 @@ public:
     void calibrate_empty();
     long measureWeight();
     void SetQnt(int qnt);
+    int getAmount();
+    void update();
+    void setLed(color arg);
 
     void open();
     void wrongID();
@@ -61,9 +73,14 @@ enum commands{
   put_in,
   auth_result,
 
+  unlock = 0x15,
+  request_amount = 0x17,
+  lock,
+
   request_auth = 0xa0,
   unit_closed,
-  cmd_debug
+  cmd_debug,
+  amount_ret
 };
 
 #define NR_OF_CONTAINERS 1
@@ -78,62 +95,91 @@ void debug(T msg)
 }
 
 void setup() {
-    Serial.begin(115200);
-    containers[0] = container(3, A0, A1, 0, 0, 0, 11);
+    Serial.begin(9600);
+    containers[0] = container(3, A0, A1, 6, 5, 4, 11);
     debug("Booted\n");
 }
 
-void readCmd(char *buf, int size, uint32_t timeout){
-  uint32_t startTime = millis();
-  int i = 0;
-  while(millis() - startTime < timeout){
-    if(Serial.available()){
-      delay(50);
-      while (Serial.available()){
-        buf[i] = Serial.read();
-        i++;
-        if(i == size)
-          return;
-      }
-    }
-  }
-}
+// void readCmd(char *buf, int size, uint32_t timeout){
+//   uint32_t startTime = millis();
+//   int i = 0;
+//   while(millis() - startTime < timeout){
+//     if(Serial.available()){
+//       delay(50);
+//       while (Serial.available()){
+//         buf[i] = Serial.read();
+//         i++;
+//         if(i == size)
+//           return;
+//       }
+//     }
+//   }
+// }
 
 
 
 
 void loop() {  
-  char cmdBuf[20];
-  for(int i = 0; i<20; i++){
-    cmdBuf[i] = 0;
-  }
-  readCmd(cmdBuf, 18, 200);
-  if(cmdBuf[0] != 0){
-    bool isValidCmd = true;
-    int cid = cmdBuf[1];
-    switch (cmdBuf[0])
-    {
-    case init_unit:
-      containers[cid].init_unit(cmdBuf+2, cmdBuf[18]);
-      break;
-    case calibrate:
-      containers[cid].calibrate();
-      break;
-    case take_out:
-      cmdBuf[2] = -cmdBuf[2];
-    case put_in:
-      containers[cid].SetQnt(cmdBuf[2]);
-      break;
-    
-    default:
-      isValidCmd = false;
-      Serial.print(char(0x55));
-      break;
+  // char cmdBuf[20];
+  // for(int i = 0; i<20; i++){
+  //   cmdBuf[i] = 0;
+  // }
+  // readCmd(cmdBuf, 20, 200);
+  if(Serial.available()){
+    delay(50);
+    int cmd = Serial.read();
+    if(cmd != 0){
+      bool isValidCmd = true;
+      int cid = Serial.read();
+      switch (cmd)
+      {
+      case init_unit:
+        char name[16];
+        for (size_t ii = 0; ii < 16; ii++)
+        {
+          name[ii] = Serial.read();
+        }
+        containers[cid].init_unit(name, Serial.read());
+        break;
+      case calibrate:
+        containers[cid].calibrate();
+        break;
+      case take_out:
+        containers[cid].SetQnt(-Serial.read());
+        break;
+      case put_in:
+        containers[cid].SetQnt(Serial.read());
+        break;
+      case unlock:
+        containers[cid].open();
+        break;
+      case lock:
+        containers[cid].close();
+        break;
+      case request_amount:
+        break;
+      default:
+        isValidCmd = false;
+        Serial.print(char(0x55));
+        break;
+      }
+      if(isValidCmd){
+        Serial.print(char(0xaa));
+      }
+      if(cmd == request_amount){
+        int amount = containers[cid].getAmount();
+        Serial.print(char(amount_ret));
+        Serial.print(char(cid));
+        Serial.print(char(amount));
+      }
     }
-    if(isValidCmd){
-      Serial.print(char(0xaa));
-    }
   }
+
+  for (size_t cid = 0; cid < NR_OF_CONTAINERS; cid++)
+  {
+    containers[cid].update();
+  }
+  
 
 }
 
@@ -235,16 +281,23 @@ container::container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int 
     debug(offset);
     debug('\n');
     myservo.attach(servo_pin, 600, 2300);
-    open();
-    delay(1000);
-    close();
-    delay(1000);
-    open();
-    debug("Servo closed\n");
     lcd.init(1, lcdRS, 255, lcd_EN, lcdD4, lcdD5, lcdD6, lcdD7, 0, 0, 0, 0);
     lcd.begin(16, 2);
     debug("lcd init/begin\n");
     lcd.print("hello world!");
+    RGB_Pins[0] = R;
+    RGB_Pins[1] = G;
+    RGB_Pins[2] = B;
+    setLed(black);
+    pinMode(R, OUTPUT);
+    pinMode(G, OUTPUT);
+    pinMode(B, OUTPUT);
+    open();
+    delay(3000);
+    close();
+    delay(3000);
+    open();
+    debug("Servo closed\n");
 }
 
 long container::measureWeight()
@@ -263,7 +316,7 @@ void container::calibrate_empty()
   for (size_t i = 0; i < 10; i++)
   {
     acc += scale.read();
-    delay(500);
+    delay(100);
   }
   offset = acc/10;
 
@@ -274,7 +327,7 @@ void container::calibrate()
   for (size_t i = 0; i < 10; i++)
   {
     acc += scale.read()-offset;
-    delay(500);
+    delay(100);
   }
   angle_part = acc/10;
 }
@@ -285,15 +338,48 @@ container::~container()
 
 void container::SetQnt(int qnt)
 {
-    qntToPut = qnt;
+    requestedAmount = getAmount() + qnt*unit_weight;
     state = waiting_for_auth;
+
 }
 
 
+int container::getAmount()
+{
+  long temp = measureWeight();
+  float amount = float(temp)/float(unit_weight);
+  return round(amount);
+}
 
 void container::wrongID()
 {
 
+}
+
+void container::setLed(color arg)
+{
+  digitalWrite(RGB_Pins[0], 1);
+  digitalWrite(RGB_Pins[1], 1);
+  digitalWrite(RGB_Pins[2], 1);
+  switch (arg)
+  {
+  case red:
+    digitalWrite(RGB_Pins[0], 0);
+    break;
+  case green:
+    digitalWrite(RGB_Pins[1], 0);
+    break;
+  case blue:
+    digitalWrite(RGB_Pins[2], 0);
+    break;
+  case cyan:
+    digitalWrite(RGB_Pins[1], 0);
+    digitalWrite(RGB_Pins[2], 0);
+    break;
+  black:
+  default:
+    break;
+  }
 }
 
 void container::init_unit(char *_name, uint8_t _unit_weight)
@@ -305,14 +391,37 @@ void container::init_unit(char *_name, uint8_t _unit_weight)
     debug(name);
     debug("\n");
     unit_weight = _unit_weight;
+    debug("Unit weight = ");
+    debug(unit_weight);
+    debug('\n');
+    lcd.setCursor(0,0);
+    lcd.print(name);
+}
+
+void container::update()
+{
+  int amount = getAmount();
+
+  if(state == authenticated_opened){
+    lcd.setCursor(0,1);
+    lcd.print(requestedAmount-amount);
+    lcd.print("    ");
+  }
+  lcd.setCursor(9, 1);
+  lcd.print(amount);
+  lcd.print("   ");
 }
 
 void container::open()
 {
-    myservo.write(0);
+  state = authenticated_opened;
+  setLed(green);
+  myservo.write(90);
+
 }
 
 void container::close()
 {
-    myservo.write(90);
+  myservo.write(180);
+  setLed(red);
 }
