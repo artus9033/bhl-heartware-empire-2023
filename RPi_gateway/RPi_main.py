@@ -70,21 +70,20 @@ class ShelfSense:
         def put_in(order: Dict[str, int]):
             print("put_in received for:", order)
 
-            sleep(2) #TODO -add RFiD check instead of sleep!!!!
-
             read_rfid = self.rfidReader.read_id()
-            loop_rfid_var = False
+            self.loop_rfid_var = False
 
             def RfiD_callback(ath_confirm: bool):
-                loop_rfid_var = ath_confirm
+                self.loop_rfid_var = ath_confirm
+
+            # semaphore = Semaphore()
 
             self.sio.emit("checkUserAuthorizationForStation", data=read_rfid, callback=RfiD_callback)
 
-            while not loop_rfid_var:
-                self.rfidReader.read_id()
+            while not self.loop_rfid_var:
+                read_rfid = self.rfidReader.read_id()
                 self.sio.emit("checkUserAuthorizationForStation", data=read_rfid, callback=RfiD_callback)
-
-            # TODO - only if RFID cjecks out execute below code
+                sleep(0.5)
 
             lastContainerId: Optional[int] = None
             lastAmount: Optional[int] = None
