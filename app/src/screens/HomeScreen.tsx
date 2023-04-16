@@ -93,7 +93,7 @@ export function HomeScreen() {
 										</Text>
 										<Text style={styles.sectionSubtitle}>
 											{pluralizeWord(station.containersCount, "container")}{" "}
-											inside
+											mounted
 										</Text>
 									</View>
 
