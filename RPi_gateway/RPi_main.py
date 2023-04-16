@@ -1,5 +1,5 @@
 import serial
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple, Optional
 from time import sleep
 import socketio
 import os
@@ -35,9 +35,16 @@ class ShelfSense:
         with open(configPath, "r") as f:
             self.config = json.load(f)
         
-        print(f"Running on a {'' if isRPI else 'NON-'}RPI")
+        try:
+            with open("/sys/firmware/devicetree/base/model", "r") as f:
+                self.isRPI = ("raspberry" in f.read().lower())
+        except:
+            # we must be on a non-linux then
+            self.isRPI = False
 
-        # self.unit_port_m = unit_port_m if isRPI else "COM8"
+        print(f"Running on a {'' if self.isRPI else 'NON-'}RPI")
+
+        # self.unit_port_m = unit_port_m if self.isRPI else "COM8"
 
         self.sio = socketio.Client()
 
@@ -58,6 +65,66 @@ class ShelfSense:
         @self.sio.event
         def connect_error(data):
             print("Connecting to SIO server failed")
+
+        @self.sio.event
+        def put_in(order: Dict[int, int]):
+            result: Tuple[bool, str] = (True, "")
+
+            sleep(4) #TODO -add RFiD check instead of sleep!!!!
+
+            # TODO - only if RFID cjecks out execute below code
+
+            lastUnit: Optional[int] = None
+            lastAmount: Optional[int] = None
+
+            self.sio.emit("put_in_progress", "UNLOCKED", 0) # unlocked signal, amount can be anything, ID must be null
+
+            try:
+                for id, targetAmount in order.items():
+                    print(f"Putting {targetAmount} to container {id}")
+                    self.put_in(id, targetAmount)
+
+                    if lastUnit is None:
+                        lastUnit = id
+
+                    self.attempt_shelf_open(id)
+
+                    # TODO: read amount of items on the shelf right now
+
+                    #self.send_to_unit(chr(0x17) + chr(id))
+
+                    realAmount = realAmount=+1 #TODO, MOCK
+
+                    if realAmount != lastAmount:
+                        print("Progress",id,realAmount)
+                        self.sio.emit("put_in_progress", id, realAmount)
+
+                    lastAmount = realAmount
+
+                    sleep(2)
+
+                self.sio.emit("put_in_progress", None, lastAmount) # finished everything, amount can be anything, ID must be null
+            except Exception as e:
+                print("failed putting items: ", e)
+                result = (False, e)
+
+                
+
+        @self.sio.event
+        def take_out(order: List[Dict[int, int]]):
+            result: Tuple[bool, str] = (True, "")
+            try:
+                for id, amount in order.items():
+                    print(f"taking {amount} to container {id}")
+                    self.take_out(id, amount)
+
+                
+                    self.attempt_shelf_open(id)
+            except Exception as e:
+                print("failed taking items: ", e)
+                result = (False, e)
+
+            return result  
 
         @self.sio.event
         def initUnits(units: List[Dict]):
@@ -147,12 +214,12 @@ class ShelfSense:
     def take_out(self, unit_id: int, amount: int):
         self.send_to_unit(chr(0x12) + chr(unit_id) + chr(amount))
 
-        self.unit_opened(unit_id)
+        #self.unit_opened(unit_id)
 
     def put_in(self, unit_id: int, amount: int):
         self.send_to_unit(chr(0x13) + chr(unit_id) + chr(amount))
 
-        self.unit_opened(unit_id) 
+        #self.unit_opened(unit_id) 
 
     ####### Private
     def get_connection(self, unit_id):
@@ -175,7 +242,6 @@ class ShelfSense:
                 if cr == 0xAA:
                     break
 
-
         print(cr)
 
         if 0xAA != cr:
@@ -190,28 +256,32 @@ class ShelfSense:
     #     for _ in range(64):
     #         cr = ord(connection.read())
     #         print(cr)
-        
-    def unit_opened(self, unit_id):
-        connection = self.get_connection(unit_id)
-        while True:
-            cr = ord(connection.read())
-            print(cr)
-            #RFiD Auth
-            if 0xA0 == cr:
-                if unit_id == ord(connection.read()):
-                    red_RFiD = ''
-                    for _ in range(4):
-                        red_RFiD += hex(ord(connection.read())).upper()[2:]
-                    print(red_RFiD)
+
+    def attempt_shelf_open(self, unit: int):
+        self.send_to_unit(chr(0x15) + chr(unit)) # unlock the container
+
+    #LEGACY FUNCTION    
+    # def unit_opened(self, unit_id):
+    #     connection = self.get_connection(unit_id)
+    #     while True:
+    #         cr = ord(connection.read())
+    #         print(cr)
+    #         #RFiD Auth
+    #         if 0xA0 == cr:
+    #             if unit_id == ord(connection.read()):
+    #                 red_RFiD = ''
+    #                 for _ in range(4):
+    #                     red_RFiD += hex(ord(connection.read())).upper()[2:]
+    #                 print(red_RFiD)
                     
-                    if red_RFiD == "699F0464":
-                        self.send_to_unit(chr(0x14) + chr(unit_id) + chr(0x01))
-                    else:
-                        self.send_to_unit(chr(0x14) + chr(unit_id) + chr(0x00))
-            # Unit closed
-            elif 0xA1 == cr:
-                if unit_id == ord(connection.read()):
-                    break
+    #                 if red_RFiD == "699F0464":
+    #                     self.send_to_unit(chr(0x14) + chr(unit_id) + chr(0x01))
+    #                 else:
+    #                     self.send_to_unit(chr(0x14) + chr(unit_id) + chr(0x00))
+    #         # Unit closed
+    #         elif 0xA1 == cr:
+    #             if unit_id == ord(connection.read()):
+    #                 break
 
 
 
