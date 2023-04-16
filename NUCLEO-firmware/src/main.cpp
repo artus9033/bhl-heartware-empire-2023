@@ -147,8 +147,6 @@ void loop() {
         containers[cid].calibrate();
         break;
       case take_out:
-        containers[cid].SetQnt(-Serial.read());
-        break;
       case put_in:
         containers[cid].SetQnt(Serial.read());
         break;
@@ -347,7 +345,7 @@ container::~container()
 
 void container::SetQnt(int qnt)
 {
-    requestedAmount = getAmount() + qnt*unit_weight;
+    requestedAmount = qnt;
     state = waiting_for_auth;
 
 }
