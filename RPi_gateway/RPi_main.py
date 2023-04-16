@@ -42,7 +42,7 @@ class ShelfSense:
             # we must be on a non-linux then
             self.isRPI = False
 
-        print(f"Running on a {'' if self.isRPI else 'NON-'}RPI")
+        print(f"Running on a{'n ' if self.isRPI else ' NON-'}RPI")
 
         # self.unit_port_m = unit_port_m if self.isRPI else "COM8"
 
@@ -76,16 +76,10 @@ class ShelfSense:
 
             lastContainerId: Optional[int] = None
             lastAmount: Optional[int] = None
-
-
-
             realAmount: Optional[int] = None
-
-
 
             self.sio.emit("put_in_progress", data=("UNLOCKED", 0)) # unlocked signal, amount can be anything, ID must be null
 
-            # try:
             for id, targetAmount in order.items():
                 realAmount = None # reset
                 lastAmount = None
@@ -132,29 +126,67 @@ class ShelfSense:
             sleep(1)
 
             return True
-            # except Exception as e:
-            #     print("failed putting items: ", e)
-            #     # result = (False, e)
-
-            #     return False
-
-                
 
         @self.sio.event
-        def take_out(order: List[Dict[int, int]]):
-            result: Tuple[bool, str] = (True, "")
-            try:
-                for id, amount in order.items():
-                    print(f"taking {amount} to container {id}")
-                    self.take_out(id, amount)
+        def take_out(order: Dict[str, int]):
+            print("take_out received for:", order)
 
-                
-                    self.attempt_shelf_open(id)
-            except Exception as e:
-                print("failed taking items: ", e)
-                result = (False, e)
+            sleep(2) #TODO -add RFiD check instead of sleep!!!!
 
-            return result  
+            # TODO - only if RFID cjecks out execute below code
+
+            lastContainerId: Optional[int] = None
+            lastAmount: Optional[int] = None
+            realAmount: Optional[int] = None
+
+            self.sio.emit("take_out_progress", data=("UNLOCKED", 0)) # unlocked signal, amount can be anything, ID must be null
+
+            for id, targetAmount in order.items():
+                realAmount = None # reset
+                lastAmount = None
+
+                id = int(id) # convert from str
+
+                print(f"Setting LED indicating taking {targetAmount} items from container {id}")
+
+                self.take_out(id, targetAmount)
+
+                if lastContainerId is None:
+                    lastContainerId = id
+
+                self.attempt_shelf_open(id)
+
+                while realAmount != targetAmount:
+
+                    self.send_to_unit(chr(0x17) + chr(lastContainerId))
+                    sleep(0.5)
+                    connection = self.get_connection(lastContainerId)
+
+                    red1 = connection.read()
+                    red2 = connection.read()
+                    red3 = connection.read()
+
+                    if ord(red1) == 0xA3 and ord(red2) == lastContainerId:
+                        realAmount = ord(red3)
+
+                    if realAmount != lastAmount:
+                        print(f"take_out progress for container {id}: {realAmount}")
+                        
+                        self.sio.emit("take_out_progress", data=(id, realAmount))
+
+                    lastAmount = realAmount # store for next iteration
+
+                    sleep(0.4)
+
+                sleep(2)
+                self.send_to_unit(chr(0x18) + chr(lastContainerId))
+
+
+            self.sio.emit("take_out_progress", data=(None, lastAmount)) # finished everything, amount should be valid, ID must be null to indicate finish
+
+            sleep(1)
+
+            return True
 
         @self.sio.event
         def initUnits(units: List[Dict]):
@@ -179,24 +211,24 @@ class ShelfSense:
                         #     connection.read()
                             #print(connection.read())
 
-                        print(1)
+                        # print(1)
 
                         cr = connection.read()
 
                         while cr != b'':
-                            print(cr)
+                            # print(cr)
                             cr = connection.read()
                         
                         while cr != b'':
-                            print(cr)
+                            # print(cr)
                             cr = connection.read()
 
                         
                         while cr != b'':
-                            print(cr)
+                            # print(cr)
                             cr = connection.read()
 
-                        print(2)
+                        # print(2)
 
                         connection.write(bytes(chr(0x00), 'latin-1'))
 
@@ -210,8 +242,6 @@ class ShelfSense:
                             pass
 
                     self.unit_port_m[unit["id"]] = unit["serialPath"]
-
-
 
                     self.init_unit(unit_id=unit["id"], unit_name=unit["name"], unit_weight=unit["weight"])
 
@@ -281,7 +311,7 @@ class ShelfSense:
         connection = self.get_connection(ord(data[1]))
         connection.write(bytes(data, 'latin-1'))
 
-        print(bytes(data, 'latin-1'))
+        # print(bytes(data, 'latin-1'))
 
         sleep(0.2)
 
@@ -290,16 +320,16 @@ class ShelfSense:
 
         cr = connection.read()
 
-        print("!", cr)
+        # print("!", cr)
 
         if cr == bytes(chr(0xA2), 'latin-1'):
             while True:
                 cr = connection.read()
-                print(cr)
+                # print(cr)
                 if cr == bytes(chr(0xAA), 'latin-1'):
                     break
 
-        print("e", cr)
+        # print("e", cr)
 
         if bytes(chr(0xAA), 'latin-1') != cr:
             raise RuntimeError("Wrong ack recieved!")
