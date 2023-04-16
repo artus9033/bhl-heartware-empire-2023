@@ -217,11 +217,14 @@ class ShelfSense:
 
 def cleanup():
     if isRPI:
-        GPIO.cleanup()
+        try:
+            GPIO.cleanup()
+        except:
+            pass
 
 atexit.register(cleanup)
 
-ss = ShelfSense({})
+ss = ShelfSense()
 
 #ss.debug(1)
 
