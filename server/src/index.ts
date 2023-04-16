@@ -400,6 +400,127 @@ async function main() {
 				callback(result);
 			});
 		});
+
+		socket.on(
+			"put_in",
+			async (
+				host: string,
+				selectedQuantitiesMap: {
+					[containerId: number]: number;
+				},
+				callback: any
+			) => {
+				// authorization
+				if (!socket.userId) return null;
+
+				let user = await AppDataSource.manager.findOne(User, {
+					where: {
+						id: socket.userId,
+					},
+					relations: [
+						"stations",
+						"stations.containers",
+						"stations.containers.productType",
+					],
+				});
+				if (!user) {
+					callback(null);
+
+					return;
+				}
+
+				let hitStation = user.stations.find(({ host: predHost }) => predHost === host);
+
+				// check if this user can access this station
+				if (!hitStation) {
+					console.warn(
+						`User ${user.id} (${user.name}) tried to access station ${host}, which they don't have access to`
+					);
+
+					callback(null);
+
+					return;
+				}
+
+				let stationSocket = stationHostToSocket[hitStation.host];
+
+				if (!stationSocket) {
+					console.warn(
+						`[APP] User ${user.id} (${user.name}) tried to access station ${host}, which they have access to, but the socket to this station is missing from the map on the server's side - it must be offline`
+					);
+
+					callback(false);
+
+					return;
+				}
+
+				console.log(
+					`[APP] User ${user.id} (${user.name}) started unlocking the station ${hitStation.host}`
+				);
+
+				let progressListener = async (
+					currentContainerId: number | null | "UNLOCKED",
+					currentRealContainerState: number
+				) => {
+					if (currentContainerId === "UNLOCKED") {
+						// finished unlocking
+
+						console.log(
+							`[APP] User ${user!.id} (${
+								user!.name
+							}) finished unlocking the station ${
+								hitStation!.host
+							}; now, the instructions for the store procedure are:`,
+							selectedQuantitiesMap
+						);
+					} else if (currentContainerId === null) {
+						// finished everything
+
+						console.log(
+							`[APP] User ${user!.id} (${
+								user!.name
+							}) finished the storing procedure into the station ${hitStation!.host}`
+						);
+					} else {
+						// in progress
+
+						console.log(
+							`[APP] User ${user!.id} (${
+								user!.name
+							}) made changes to the state while storing into the station ${
+								hitStation!.host
+							}:`,
+							currentContainerId,
+							currentRealContainerState
+						);
+
+						let container = hitStation!.containers.find(
+							({ id }) => id === currentContainerId
+						)!;
+
+						container.itemsCount = currentRealContainerState;
+
+						await AppDataSource.manager.save(container);
+					}
+
+					socket.emit("put_in_progress", currentContainerId, currentRealContainerState);
+				};
+
+				stationSocket.on("put_in_progress", progressListener);
+
+				stationSocket.emit("put_in", selectedQuantitiesMap, (result: boolean) => {
+					console.log(
+						`[APP] User ${user!.id} (${
+							user!.name
+						}) completed the store procedure into station ${hitStation!.host}`
+					);
+
+					stationSocket.off("put_in_progress", progressListener);
+
+					callback(result);
+				});
+			}
+		);
 	});
 
 	appHttpServer.listen(4000, "0.0.0.0");
