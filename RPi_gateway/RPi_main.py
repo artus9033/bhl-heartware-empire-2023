@@ -135,12 +135,15 @@ class ShelfSense:
                 for unit in units:
                     if unit["serialPath"] not in self.unit_port_m.values():
                         port = unit["serialPath"]
-                        connection = serial.Serial(unit["serialPath"] if isRPI else 'COM8', baudrate=115200, timeout = 1)
+                        connection = serial.Serial(unit["serialPath"] if isRPI else 'COM8', baudrate=9600, timeout = 1)
                         self.ser_cons[port] = connection
 
                         sleep(1)
 
                         connection.write(bytes(chr(0x00), 'latin-1'))
+
+                        sleep(1)
+
                         connection.timeout = 0.001
                         for _ in range(100):
                             connection.read()
