@@ -24,6 +24,25 @@ if isRPI:
 class ShelfSense:
     config: Dict[str, Any] = {}
 
+    def auth_RFID(self):
+        read_rfid = self.rfidReader.read_id()
+        self.loop_rfid_var = False
+
+
+        def RfiD_callback(ath_confirm: bool):
+            self.loop_rfid_var = ath_confirm
+
+        self.sio.emit("checkUserAuthorizationForStation", data=read_rfid, callback=RfiD_callback)
+
+        while not self.loop_rfid_var:
+            read_rfid = self.rfidReader.read_id()
+            self.sio.emit("checkUserAuthorizationForStation", data=read_rfid, callback=RfiD_callback)
+            sleep(0.5)
+            if not self.loop_rfid_var:
+                self.send_to_unit(chr(0x16) + chr(0x00))
+                print(chr(0x16) + chr(0x00))
+            sleep(0.5)
+
     def __init__(self) -> None:
         self.ser_cons: Dict[str, serial.Serial] = {}
         self.unit_port_m: Dict[int, str] = {}
@@ -48,6 +67,7 @@ class ShelfSense:
 
         self.sio = socketio.Client()
 
+
         @self.sio.event
         def connect():
             print("Connecting to SIO server")
@@ -66,27 +86,12 @@ class ShelfSense:
         def connect_error(data):
             print("Connecting to SIO server failed")
 
+
         @self.sio.event
         def put_in(order: Dict[str, int]):
             print("put_in received for:", order)
 
-            read_rfid = self.rfidReader.read_id()
-            self.loop_rfid_var = False
-
-
-            def RfiD_callback(ath_confirm: bool):
-                self.loop_rfid_var = ath_confirm
-
-            self.sio.emit("checkUserAuthorizationForStation", data=read_rfid, callback=RfiD_callback)
-
-            while not self.loop_rfid_var:
-                read_rfid = self.rfidReader.read_id()
-                self.sio.emit("checkUserAuthorizationForStation", data=read_rfid, callback=RfiD_callback)
-                sleep(0.5)
-                if not self.loop_rfid_var:
-                    self.send_to_unit(chr(0x16) + chr(0x00))
-                    print(chr(0x16) + chr(0x00))
-                sleep(0.5)
+            self.auth_RFID()
 
             lastContainerId: Optional[int] = None
             lastAmount: Optional[int] = None
@@ -147,9 +152,7 @@ class ShelfSense:
         def take_out(order: Dict[str, int]):
             print("take_out received for:", order)
 
-            sleep(2) #TODO -add RFiD check instead of sleep!!!!
-
-            # TODO - only if RFID cjecks out execute below code
+            self.auth_RFID()
 
             lastContainerId: Optional[int] = None
             lastAmount: Optional[int] = None
