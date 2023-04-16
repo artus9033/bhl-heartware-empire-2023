@@ -47,9 +47,11 @@ public:
     LiquidCrystal lcd;
     int requestedAmount;
     int someIter;
+    int openAngle;
+    int closeAngle;
     
 
-    container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int G, int B, bool ledInvLog, int lcd_EN);
+    container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int G, int B, bool ledInvLog, int lcd_EN,  int srvClosed, int servOpened);
     container();
     ~container();
 
@@ -77,6 +79,7 @@ enum commands{
   auth_result,
 
   unlock = 0x15,
+  wrongID,
   request_amount = 0x17,
   lock,
 
@@ -86,7 +89,7 @@ enum commands{
   amount_ret
 };
 
-#define NR_OF_CONTAINERS 1
+#define NR_OF_CONTAINERS 2
 
 container containers[NR_OF_CONTAINERS];
 
@@ -99,7 +102,9 @@ void debug(T msg)
 
 void setup() {
     Serial.begin(9600);
-    containers[0] = container(3, A0, A1, 6, 2, 4, true, 11);
+    containers[0] = container(3, A0, A1, 6, 2, 4, true, 11, 180, 90);
+    delay(500);
+    containers[1] = container(5, A3, A4, A5, A6, 255, true, A2, 90, 0);
     debug("Booted\n\r");
 }
 
@@ -155,6 +160,8 @@ void loop() {
       case unlock:
         containers[cid].open();
         break;
+      case wrongID:
+        break;
       case lock:
         containers[cid].close();
         break;
@@ -172,10 +179,20 @@ void loop() {
       if(isValidCmd){
         Serial.print(char(0xaa));
       }
+
       if(cmd == request_amount){
         Serial.print(char(amount_ret));
         Serial.print(char(cid));
         Serial.print(char(amount));
+      }
+      else if(cmd == wrongID){
+        for (size_t h = 0; h < 3; h++)
+        {
+          containers[cid].setLed(red);
+          delay(200);
+          containers[cid].setLed(black);
+          delay(200);
+        }
       }
     }
   }
@@ -282,7 +299,7 @@ void loop() {
 //   }
 // }
 
-container::container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int G, int B, bool ledInvLog, int lcd_EN)
+container::container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int G, int B, bool ledInvLog, int lcd_EN, int srvClosed, int servOpened)
 {
     state = uninitialized;
     scale.begin(_HX_DT_pin, _HX_SCK_pin);
@@ -294,16 +311,17 @@ container::container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int 
     lcd.init(1, lcdRS, 255, lcd_EN, lcdD4, lcdD5, lcdD6, lcdD7, 0, 0, 0, 0);
     lcd.begin(16, 2);
     debug("lcd init/begin\n\r");
-    lcd.print("hello world!");
+    lcd.print("ShelfSense v0.1");
     RGB_Pins[0] = R;
     RGB_Pins[1] = G;
-    RGB_Pins[2] = B;
+    // RGB_Pins[2] = B;
     setLed(black);
     pinMode(R, OUTPUT);
     pinMode(G, OUTPUT);
-    pinMode(B, OUTPUT);
+    openAngle = servOpened;
+    closeAngle = srvClosed;
+    // pinMode(B, OUTPUT);
     open();
-    debug("Servo closed\n\r");
 }
 
 long container::measureWeight()
@@ -369,7 +387,7 @@ void container::setLed(color arg)
 {
   digitalWrite(RGB_Pins[0], 1);
   digitalWrite(RGB_Pins[1], 1);
-  digitalWrite(RGB_Pins[2], 1);
+  // digitalWrite(RGB_Pins[2], 1);
   switch (arg)
   {
   case red:
@@ -378,13 +396,13 @@ void container::setLed(color arg)
   case green:
     digitalWrite(RGB_Pins[1], 0);
     break;
-  case blue:
-    digitalWrite(RGB_Pins[2], 0);
-    break;
-  case cyan:
-    digitalWrite(RGB_Pins[1], 0);
-    digitalWrite(RGB_Pins[2], 0);
-    break;
+  // case blue:
+  //   digitalWrite(RGB_Pins[2], 0);
+    // break;
+  // case cyan:
+  //   digitalWrite(RGB_Pins[1], 0);
+  //   digitalWrite(RGB_Pins[2], 0);
+  //   break;
   black:
   default:
     break;
@@ -436,7 +454,7 @@ void container::update()
 
 void container::open()
 {
-  myservo.write(90);
+  myservo.write(openAngle);
   if(state == uninitialized)
     return;
   setLed(green);
@@ -446,7 +464,7 @@ void container::open()
 
 void container::close()
 {
-  myservo.write(180);
+  myservo.write(closeAngle);
   if(state == uninitialized)
     return;
   setLed(red);
