@@ -46,9 +46,10 @@ public:
     long sodaCanWeight = 12925;
     LiquidCrystal lcd;
     int requestedAmount;
+    int someIter;
     
 
-    container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int G, int B, int lcd_EN);
+    container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int G, int B, bool ledInvLog, int lcd_EN);
     container();
     ~container();
 
@@ -72,6 +73,7 @@ enum commands{
   calibrate,
   take_out,
   put_in,
+                                                
   auth_result,
 
   unlock = 0x15,
@@ -97,7 +99,7 @@ void debug(T msg)
 
 void setup() {
     Serial.begin(9600);
-    containers[0] = container(3, A0, A1, 6, 5, 4, 11);
+    containers[0] = container(3, A0, A1, 6, 2, 4, true, 11);
     debug("Booted\n\r");
 }
 
@@ -280,7 +282,7 @@ void loop() {
 //   }
 // }
 
-container::container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int G, int B, int lcd_EN)
+container::container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int G, int B, bool ledInvLog, int lcd_EN)
 {
     state = uninitialized;
     scale.begin(_HX_DT_pin, _HX_SCK_pin);
@@ -300,7 +302,7 @@ container::container(int servo_pin, int _HX_DT_pin, int _HX_SCK_pin, int R, int 
     pinMode(R, OUTPUT);
     pinMode(G, OUTPUT);
     pinMode(B, OUTPUT);
-    close();
+    open();
     debug("Servo closed\n\r");
 }
 
@@ -420,6 +422,13 @@ void container::update()
     lcd.print(requestedAmount-amount);
     lcd.print("    ");
   }
+  if(state == all_picked_up){
+    someIter++;
+    if(someIter >= 6){
+      setLed(black);
+      state = def;
+    }
+  }
   lcd.setCursor(12, 1);
   lcd.print(amount);
   lcd.print("   ");
@@ -427,14 +436,20 @@ void container::update()
 
 void container::open()
 {
-  state = authenticated_opened;
-  setLed(green);
   myservo.write(90);
+  if(state == uninitialized)
+    return;
+  setLed(green);
+  state = authenticated_opened;
 
 }
 
 void container::close()
 {
   myservo.write(180);
+  if(state == uninitialized)
+    return;
   setLed(red);
+  state = all_picked_up;
+  someIter = 0;
 }
