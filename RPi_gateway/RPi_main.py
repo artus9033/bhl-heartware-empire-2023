@@ -117,7 +117,7 @@ class ShelfSense:
 
                     sleep(0.4)
 
-                sleep(2)
+                sleep(5)
                 self.send_to_unit(chr(0x18) + chr(lastContainerId))
 
 
@@ -178,7 +178,7 @@ class ShelfSense:
 
                     sleep(0.4)
 
-                sleep(2)
+                sleep(5)
                 self.send_to_unit(chr(0x18) + chr(lastContainerId))
 
 
